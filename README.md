@@ -1,1 +1,1 @@
-# mini_games
+Different versions of the game
