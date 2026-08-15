@@ -39,7 +39,7 @@ INSTRUÇÕES DE RESPOSTA:
 
 EXEMPLO DE FORMATO:
 ========================================
-👑 REINO DE [NOME] | 💰 OURO: 5000 | ⚔️ MILITAR: 2000 | 😊 FELICIDADE: 70%
+👑 REINO DE [NOME] | 💰 OURO: 5000 | 👥 POPULAÇÃO: 10000 | ⚔️ MILITAR: 2000 | 😊 FELICIDADE: 70%
 RELIGIÃO: [NOME]
 ========================================
 

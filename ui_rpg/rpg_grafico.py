@@ -47,22 +47,52 @@ SUA MISSÃO É NARRAR EVENTOS E GERENCIAR OS DADOS DO REINO.
 ### REGRAS DE FORMATAÇÃO (OBRIGATÓRIO)
 Sua resposta deve ser APENAS um JSON seguindo exatamente este esquema:
 {
-  "aventura": "Texto narrativo aqui (máximo 600 caracteres). Descreva o cenário, o conflito e ofereça SEMPRE 3 opções numeradas de ação para o Imperador.",
+  "aventura": "Texto narrativo aqui (máximo 600 caracteres). Descreva o cenário, o conflito e apresente SEMPRE 3 opções numeradas de ação ao final em linhas separadas.",
+  "clima": "aventura | calmo | frenetico | harmonia | desenvolvimento | desespero (Escolha obrigatoriamente a opção que melhor reflete a atmosfera do momento narrativo)",
+  "opcoes": [
+    "1. Primeira opção de ação",
+    "2. Segunda opção de ação",
+    "3. Terceira opção de ação"
+  ],
   "status_reino": {
     "nome_reino": "Nome do Reino (String)",
     "imperador": "Nome do Jogador (String)",
     "dinheiro": 5000 (Inteiro, sem pontos),
+    "populacao": 10000 (Inteiro, sem pontos),
     "religião": "Nome da Religião (String)",
     "poder_militar": 1000 (Inteiro),
     "felicidade": "70%" (String com %)
   }
 }
 
+### EXEMPLOS DE FORMATO (SMALL SHOTS / FEW-SHOT)
+Exemplo:
+{
+  "aventura": "Vossa Majestade, o reino prospera com a paz recém-alcançada. Os conselheiros solicitam vossas ordens sobre os investimentos prioritários do próximo ano.\\n\\n1. Expandir as rotas comerciais marítimas.\\n2. Recrutar novos soldados para a guarda imperial.\\n3. Construir um grande templo para fortalecer a fé do povo.",
+  "clima": "desenvolvimento",
+  "opcoes": [
+    "1. Expandir as rotas comerciais marítimas.",
+    "2. Recrutar novos soldados para a guarda imperial.",
+    "3. Construir um grande templo para fortalecer a fé do povo."
+  ],
+  "status_reino": {
+    "nome_reino": "Aurelia",
+    "imperador": "Arthur",
+    "dinheiro": 5000,
+    "populacao": 10000,
+    "religião": "Nenhuma",
+    "poder_militar": 2000,
+    "felicidade": "75%"
+  }
+}
+
 ### REGRAS DE JOGO
 1. **Início:** Se for criar um novo reino, defina Felicidade: 70%, Dinheiro: 5000, Militar: 1000-5000 (variando pela espécie).
 2. **Consequências:** As escolhas do usuário devem alterar os números no próximo turno logicamente (ex: guerra gasta dinheiro e militar).
-3. **Tom:** Use linguagem formal ("Vossa Majestade").
-4. **Inputs:** O usuário enviará comandos ou escolhas. Interprete-os e avance a história.
+3. **Clima Musical:** Defina o campo 'clima' dinamicamente baseado na narrativa do momento ('frenetico', 'desespero', 'harmonia', 'desenvolvimento', 'calmo' ou 'aventura').
+4. **Tom:** Use linguagem formal ("Vossa Majestade").
+5. **Inputs:** O usuário enviará comandos ou escolhas. Interprete-os e avance a história.
+6. **Opções:** Você DEVE fornecer a lista 'opcoes' com exatamente 3 alternativas.
 """
 
 # Prompt do Historiador (Save Game)
@@ -123,6 +153,37 @@ def blit_text(surface, text, pos, font, max_width, start_pos, color=pygame.Color
 
 clock = pygame.time.Clock()
 
+MUSICAS_CLIMA = {
+    "aventura": "musicas/clima de aventura.mp3",
+    "calmo": "musicas/clima de calmo.mp3",
+    "frenetico": "musicas/clima frenetico.mp3",
+    "harmonia": "musicas/clima de harmonia.mp3",
+    "desenvolvimento": "musicas/clima de desenvolvimento.mp3",
+    "desespero": "musicas/clima de desespero.mp3"
+}
+musica_atual = None
+
+def atualizar_musica_clima(clima):
+    global musica_atual
+    if not clima:
+        clima = "aventura"
+    norm_clima = str(clima).strip().lower()
+    target_file = "musicas/clima de aventura.mp3"
+    for key, file_path in MUSICAS_CLIMA.items():
+        if key in norm_clima:
+            target_file = file_path
+            break
+    if target_file != musica_atual:
+        try:
+            if not mixer.get_init():
+                mixer.init()
+            if os.path.exists(target_file):
+                mixer.music.load(target_file)
+                mixer.music.play(-1)
+                musica_atual = target_file
+        except Exception as e:
+            print(f"Aviso áudio: {e}")
+
 def game_screen():
     # UI Setup
     text_entry = pygame_gui.elements.UITextEntryLine(
@@ -181,18 +242,22 @@ def game_screen():
     except json.JSONDecodeError:
         dados = {"aventura": "Erro ao processar dados do reino. Tente novamente.", "status_reino": {"dinheiro":0, "religião": "Erro", "poder_militar": 0, "nome_reino": "Erro", "imperador": "Erro", "felicidade": "0%"}}
 
+    if 'clima' in dados:
+        atualizar_musica_clima(dados.get('clima'))
+
     aventure = dados.get('aventura', '')
     status = dados.get('status_reino', {})
     
     # Extração segura
     religião = status.get('religião', 'N/A')
     dinheiro = status.get('dinheiro', 0)
+    populacao = status.get('populacao', status.get('população', 10000))
     poder_militar = status.get('poder_militar', 0)
     nome_reino = status.get('nome_reino', 'N/A')
     imperador = status.get('imperador', 'N/A')
     felicidade = status.get('felicidade', '0%')
 
-    status_texto_formatado = f"###### REINO ######\n{nome_reino}\n\n#### DINHEIRO ####\n{dinheiro}\n\n##### RELIGIÃO #####\n{religião}\n\n## PODER MILITAR ##\n{poder_militar}\n\n#### FELICIDADE ####\n{felicidade}\n\n### IMPERADOR ###\n{imperador}\n\n##################"
+    status_texto_formatado = f"###### REINO ######\n{nome_reino}\n\n#### DINHEIRO ####\n{dinheiro}\n\n### POPULAÇÃO ###\n{populacao}\n\n##### RELIGIÃO #####\n{religião}\n\n## PODER MILITAR ##\n{poder_militar}\n\n#### FELICIDADE ####\n{felicidade}\n\n### IMPERADOR ###\n{imperador}\n\n##################"
     informacoes = status_texto_formatado + "\n" + str(aventure)
     textl = f"{aventure}"
 
@@ -233,16 +298,19 @@ def game_screen():
                         
                         # Parse JSON
                         respostaj = json.loads(respostaa)
+                        if 'clima' in respostaj:
+                            atualizar_musica_clima(respostaj.get('clima'))
                         status = respostaj.get('status_reino', {})
                         
                         religião = status.get('religião', 'N/A')
                         dinheiro = status.get('dinheiro', 0)
+                        populacao = status.get('populacao', status.get('população', 10000))
                         poder_militar = status.get('poder_militar', 0)
                         nome_reino = status.get('nome_reino', 'N/A')
                         imperador = status.get('imperador', 'N/A')
                         felicidade = status.get('felicidade', '0%')
                         
-                        status_texto_formatado = f"###### REINO ######\n{nome_reino}\n\n#### DINHEIRO ####\n{dinheiro}\n\n##### RELIGIÃO #####\n{religião}\n\n## PODER MILITAR ##\n{poder_militar}\n\n#### FELICIDADE ####\n{felicidade}\n\n### IMPERADOR ###\n{imperador}\n\n##################"
+                        status_texto_formatado = f"###### REINO ######\n{nome_reino}\n\n#### DINHEIRO ####\n{dinheiro}\n\n### POPULAÇÃO ###\n{populacao}\n\n##### RELIGIÃO #####\n{religião}\n\n## PODER MILITAR ##\n{poder_militar}\n\n#### FELICIDADE ####\n{felicidade}\n\n### IMPERADOR ###\n{imperador}\n\n##################"
                         aventure = respostaj.get('aventura', '')
                         textl = f"{aventure}"
                         
@@ -325,12 +393,7 @@ else:
 manager = pygame_gui.UIManager((int(screen_width), int(screen_height)))
 
 # Tenta carregar música
-try:
-    mixer.init()
-    mixer.music.load('musicas/clima de harmonia.mp3')
-    mixer.music.play(-1) # Loop infinito
-except:
-    print("Música não encontrada, continuando mudo.")
+atualizar_musica_clima("harmonia")
 
 # Fonte para menus
 try:
