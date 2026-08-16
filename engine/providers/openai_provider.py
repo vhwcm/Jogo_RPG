@@ -10,6 +10,7 @@ class OpenAIProvider(BaseLLMProvider):
         self.model_name = model_name or config.OPENAI_MODEL
         self.embedding_model = config.OPENAI_EMBEDDING_MODEL
         self._client = None
+        self._embedding_cache: Dict[str, List[float]] = {}
         if self.api_key:
             try:
                 from openai import OpenAI
@@ -59,15 +60,26 @@ class OpenAIProvider(BaseLLMProvider):
         return json.loads(text)
 
     def generate_embedding(self, text: str) -> List[float]:
-        if not self.is_available():
+        if not text:
             return generate_fallback_embedding(text)
+        if text in self._embedding_cache:
+            return self._embedding_cache[text]
+
+        if not self.is_available():
+            emb = generate_fallback_embedding(text)
+            self._embedding_cache[text] = emb
+            return emb
 
         try:
             res = self._client.embeddings.create(
                 model=self.embedding_model,
                 input=text
             )
-            return res.data[0].embedding
+            emb = res.data[0].embedding
+            self._embedding_cache[text] = emb
+            return emb
         except Exception as e:
             print(f"Warning: OpenAI embedding generation failed ({e}). Using fallback.")
-            return generate_fallback_embedding(text)
+            emb = generate_fallback_embedding(text)
+            self._embedding_cache[text] = emb
+            return emb

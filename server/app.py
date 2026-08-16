@@ -20,7 +20,9 @@ from server.dto import (
     CampaignSummaryDTO,
     RollbackRequest,
     ImportCampaignRequest,
-    EstimateActionRequest
+    EstimateActionRequest,
+    GameActionDTO,
+    StateDetailsDTO
 )
 
 app = FastAPI(title="AI RPG Game Server API", version="2.0.0")
@@ -55,11 +57,13 @@ def create_campaign(req: CreateCampaignRequest):
             kingdom_name=req.kingdom_name,
             race=req.race
         )
+        actions_dto = [GameActionDTO(action_type=a.action_type, payload=a.payload) for a in turn.actions]
         return TurnResponseDTO(
             aventura=turn.aventura,
             clima=turn.clima,
             opcoes=turn.opcoes,
             status_reino=KingdomStatusDTO(**turn.status_reino.__dict__),
+            actions=actions_dto,
             raw_json=turn.raw_json
         )
     except Exception as e:
@@ -100,15 +104,22 @@ def get_campaign_history(campaign_id: str):
 def get_campaign_entities(campaign_id: str):
     return engine.get_campaign_entities(campaign_id)
 
+@app.get("/api/campaign/{campaign_id}/state-details")
+@app.get("/api/campaigns/{campaign_id}/state-details")
+def get_campaign_state_details(campaign_id: str):
+    return engine.get_campaign_state_details(campaign_id)
+
 @app.post("/api/campaigns/{campaign_id}/rollback", response_model=TurnResponseDTO)
 def rollback_campaign(campaign_id: str, req: RollbackRequest):
     try:
         turn = engine.rollback_turn(campaign_id, req.target_turn)
+        actions_dto = [GameActionDTO(action_type=a.action_type, payload=a.payload) for a in turn.actions]
         return TurnResponseDTO(
             aventura=turn.aventura,
             clima=turn.clima,
             opcoes=turn.opcoes,
             status_reino=KingdomStatusDTO(**turn.status_reino.__dict__),
+            actions=actions_dto,
             raw_json=turn.raw_json
         )
     except ValueError as ve:
@@ -144,11 +155,13 @@ def estimate_action(campaign_id: str, req: EstimateActionRequest):
 def execute_turn(req: TurnRequest):
     try:
         turn = engine.execute_turn(req.campaign_id, req.player_action)
+        actions_dto = [GameActionDTO(action_type=a.action_type, payload=a.payload) for a in turn.actions]
         return TurnResponseDTO(
             aventura=turn.aventura,
             clima=turn.clima,
             opcoes=turn.opcoes,
             status_reino=KingdomStatusDTO(**turn.status_reino.__dict__),
+            actions=actions_dto,
             raw_json=turn.raw_json
         )
     except Exception as e:
@@ -158,8 +171,6 @@ def execute_turn(req: TurnRequest):
 def get_memories(campaign_id: str, limit: int = 5):
     return engine.vector_store.get_recent_memories(campaign_id, limit=limit)
 
-# Mount Web Application static files
 web_dir = Path(__file__).resolve().parent.parent / "web"
 if web_dir.exists():
     app.mount("/", StaticFiles(directory=str(web_dir), html=True), name="web")
-

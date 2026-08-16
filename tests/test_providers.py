@@ -27,3 +27,19 @@ def test_llm_factory_fallback():
     assert provider.is_available() is True
     res = provider.generate_json("Test prompt")
     assert isinstance(res, dict)
+
+def test_gemini_provider_cache():
+    from engine.providers.gemini_provider import GeminiProvider
+    p = GeminiProvider(api_key="")
+    emb1 = p.generate_embedding("texto repetido")
+    emb2 = p.generate_embedding("texto repetido")
+    assert emb1 == emb2
+    assert "texto repetido" in p._embedding_cache
+
+def test_openai_provider_cache():
+    from engine.providers.openai_provider import OpenAIProvider
+    p = OpenAIProvider(api_key="")
+    emb1 = p.generate_embedding("texto repetido openai")
+    emb2 = p.generate_embedding("texto repetido openai")
+    assert emb1 == emb2
+    assert "texto repetido openai" in p._embedding_cache
