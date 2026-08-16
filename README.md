@@ -4,7 +4,7 @@ RPG de Estratégia e Narrativa Medieval alimentado por Inteligência Artificial 
 
 ## 🌟 Principais Recursos
 
-- **Arquitetura em Camadas (Clean Architecture)**: Código do motor de jogo (`engine/`) 100% reutilizável entre a **Interface Gráfica Web** e a **Interface CLI Terminal**.
+- **Arquitetura em Camadas (Clean Architecture)**: Código do motor de jogo (`engine/`) desacoplado e servido via API REST FastAPI.
 - **Memória RAG Episódica & Vetorial**: Armazenamento episódico de eventos em SQLite3 com cálculo de *importance score* (0.0 a 1.0) e busca por semântica (cosine similarity) + filtros por personagem e recência.
 - **Estado do Mundo Estruturado**: Tabelas relacionais em SQLite3 para reinos, status de recursos, lealdade de NPCs, quests em andamento e itens.
 - **Provedores de LLM Plugáveis com Fallback**:
@@ -12,9 +12,8 @@ RPG de Estratégia e Narrativa Medieval alimentado por Inteligência Artificial 
   - ⚡ **xAI Grok API** (`grok-2`)
   - 🟢 **OpenAI** (`gpt-4o-mini`)
   - 🦙 **Ollama (Local / Offline)** (`llama3.2`)
-- **Duas Interfaces de Usuário**:
-  - **Web Application moderna em Glassmorphism** (FastAPI backend + HTML5/CSS3/JS)
-  - **CLI Terminal elegante** (Rich library com tabelas e painéis majestosos)
+- **Interface Web Moderna**:
+  - **Web Application em Glassmorphism** (FastAPI backend + HTML5/CSS3/JS, trilha sonora adaptativa, mapa tático de nós e gerenciamento de inventário/diplomacia)
 - **Bateria de Testes Automáticos**: Testes unitários e de integração com `pytest`.
 - **Script Diagnóstico de APIs**: `python3 run.py check` para testar conectividade e latência de todas as chaves de API configuradas.
 
@@ -46,11 +45,6 @@ DEFAULT_LLM_PROVIDER=gemini
   ```
   Acesse no navegador: `http://localhost:8000`
 
-- **Interface CLI Terminal**:
-  ```bash
-  python3 run.py cli
-  ```
-
 - **Executar Bateria de Testes (`pytest`)**:
   ```bash
   python3 run.py test
@@ -74,7 +68,6 @@ AI_RPG_GAME/
 │   └── providers/               # Provedores de IA (Gemini, Grok, OpenAI, Ollama)
 ├── server/                      # Servidor REST FastAPI para a Web UI
 ├── web/                         # Frontend Web em Glassmorphism (HTML/CSS/JS)
-├── cli/                         # Interface de linha de comando (Rich)
 ├── tests/                       # Bateria de testes pytest
 ├── check_api.py                 # Script diagnóstico de conexão das APIs
 ├── config.py                    # Configurações globais

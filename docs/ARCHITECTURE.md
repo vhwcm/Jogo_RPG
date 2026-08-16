@@ -1,24 +1,20 @@
 # 🏛️ Visão Geral da Arquitetura do Sistema
 
-O **AI RPG Game** foi construído seguindo princípios de **Clean Architecture** e **Hexagonal Architecture**, desacoplando totalmente a lógica do domínio de jogo, persistência e inferências de IA das camadas de apresentação (CLI Terminal e Web Application).
+O **AI RPG Game** foi construído seguindo princípios de **Clean Architecture** e **Hexagonal Architecture**, desacoplando totalmente a lógica do domínio de jogo, persistência e inferências de IA da camada de apresentação (Web Application).
 
 ---
 
 ## 🎯 Diagrama de Componentes
 
 ```
-                     ┌──────────────────────────┐
-                     │    Interface CLI (Rich)  │
-                     └─────────────┬────────────┘
-                                   │
-┌──────────────────────────┐       │
-│  Interface Web (HTML/JS) ├───────┼───────────────────────┐
-└────────────┬─────────────┘       │                       │
-             │                     │                       │
-             ▼                     ▼                       ▼
-    ┌─────────────────────────────────────────────────────────────┐
-    │              FastAPI Server / Engine Controller             │
-    └──────────────────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│              Interface Web SPA (HTML5 / CSS / JS)           │
+└──────────────────────────────┬──────────────────────────────┘
+                               │ (HTTP / JSON REST API)
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│              FastAPI Server / Engine Controller             │
+└──────────────────────────────┬──────────────────────────────┘
                                    │
               ┌────────────────────┼────────────────────┐
               ▼                    ▼                    ▼
@@ -46,7 +42,7 @@ O **AI RPG Game** foi construído seguindo princípios de **Clean Architecture**
 
 ## 🗄️ Esquema do Banco de Dados SQLite3
 
-- `campaigns`: Registro de campanhas (`id`, `name`, `summary`, `created_at`).
+- `campaigns`: Registro de campanhas (`id`, `name`, `summary`, `created_at`, `updated_at`).
 - `world_state`: Histórico de turnos do reino (`campaign_id`, `turn_number`, `kingdom_name`, `ruler_name`, `race`, `gold`, `population`, `military`, `happiness`, `religion`).
 - `characters`: Personagens e NPCs (`id`, `name`, `role`, `location`, `is_alive`, `relationship_with_player`, `knowledge_json`).
 - `quests`: Missões do reino (`id`, `title`, `description`, `status`, `objective`).
