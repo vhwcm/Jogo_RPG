@@ -60,6 +60,7 @@ def create_campaign(req: CreateCampaignRequest):
         )
         actions_dto = [GameActionDTO(action_type=a.action_type, payload=a.payload) for a in turn.actions]
         return TurnResponseDTO(
+            campaign_id=turn.campaign_id,
             aventura=turn.aventura,
             clima=turn.clima,
             opcoes=turn.opcoes,
@@ -158,6 +159,7 @@ def execute_turn(req: TurnRequest):
         turn = engine.execute_turn(req.campaign_id, req.player_action)
         actions_dto = [GameActionDTO(action_type=a.action_type, payload=a.payload) for a in turn.actions]
         return TurnResponseDTO(
+            campaign_id=req.campaign_id,
             aventura=turn.aventura,
             clima=turn.clima,
             opcoes=turn.opcoes,

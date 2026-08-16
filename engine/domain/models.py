@@ -140,6 +140,7 @@ class EvaluationResult:
 class TurnResponse:
     aventura: str
     status_reino: KingdomStatus
+    campaign_id: Optional[str] = None
     clima: str = "aventura"
     opcoes: List[Any] = field(default_factory=list)
     actions: List[GameAction] = field(default_factory=list)

@@ -109,6 +109,7 @@ class StateDetailsDTO(BaseModel):
     map_edges: List[Dict[str, Any]] = Field(default_factory=list)
 
 class TurnResponseDTO(BaseModel):
+    campaign_id: Optional[str] = None
     aventura: str
     clima: Optional[str] = "aventura"
     opcoes: Optional[List[Any]] = []

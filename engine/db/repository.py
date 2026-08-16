@@ -401,6 +401,7 @@ class Repository:
             INSERT INTO periodic_events (id, campaign_id, titulo, descricao, intervalo_dias, ultimo_disparo_dia, proximo_disparo_dia, efeito_json, status, criado_no_turno)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
+                campaign_id=excluded.campaign_id,
                 titulo=excluded.titulo,
                 descricao=excluded.descricao,
                 intervalo_dias=excluded.intervalo_dias,

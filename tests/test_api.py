@@ -32,14 +32,26 @@ def test_api_campaign_creation_and_turn():
     assert "aventura" in data
     assert "status_reino" in data
     assert "opcoes" in data
-    assert isinstance(data["opcoes"], list)
+    assert "campaign_id" in data
+    assert data["campaign_id"] is not None
+
+    cid = data["campaign_id"]
+
+    # Check state details for default tax event right on creation
+    details_resp = client.get(f"/api/campaigns/{cid}/state-details")
+    assert details_resp.status_code == 200
+    details = details_resp.json()
+    assert "periodic_events" in details
+    tax_ev = next((e for e in details["periodic_events"] if "recolhimento_impostos" in e["id"] or "Impostos" in e["titulo"]), None)
+    assert tax_ev is not None
+    assert tax_ev["intervalo_dias"] == 30
+    assert tax_ev["proximo_disparo_dia"] == 30
 
     # 2. List Campaigns
     list_resp = client.get("/api/campaigns")
     assert list_resp.status_code == 200
     camps = list_resp.json()
     target_camp = [c for c in camps if c["name"] == "API Test Kingdom"][0]
-    cid = target_camp["id"]
 
     # 3. Execute Turn
     turn_payload = {

@@ -364,9 +364,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await resp.json();
 
-            const listResp = await fetch('/api/campaigns');
-            const camps = await listResp.json();
-            currentCampaignId = camps[0].id;
+            if (data.campaign_id) {
+                currentCampaignId = data.campaign_id;
+            } else {
+                const listResp = await fetch('/api/campaigns');
+                const camps = await listResp.json();
+                const matched = camps.find(c => c.name === payload.campaign_name);
+                currentCampaignId = matched ? matched.id : (camps[0] ? camps[0].id : null);
+            }
             localStorage.setItem('rpg_active_campaign_id', currentCampaignId);
             currentTurnNum = 1;
             currentDay = (data.status_reino && data.status_reino.dia_atual) ? data.status_reino.dia_atual : 1;

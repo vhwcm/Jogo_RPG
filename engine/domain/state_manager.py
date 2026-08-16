@@ -259,7 +259,7 @@ class GameEngine:
             descricao="Tratado de Não-Agressão com Solária"
         )
         self.repo.upsert_periodic_event(
-            event_id="recolhimento_impostos",
+            event_id=f"recolhimento_impostos_{campaign_id}",
             campaign_id=campaign_id,
             titulo="Recolhimento de Impostos",
             intervalo_dias=30,
@@ -1189,6 +1189,7 @@ class GameEngine:
         opcoes = self._extract_opcoes(response_json, narrative)
 
         return TurnResponse(
+            campaign_id=campaign_id,
             aventura=narrative,
             status_reino=status,
             clima=clima,
