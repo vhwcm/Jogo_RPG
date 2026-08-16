@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env
+data/*.db
+data/rpg_game.db
+web_backup_v1/
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+.DS_Store
