@@ -70,16 +70,17 @@ class Repository:
         happiness: str,
         religion: str,
         population: int = 10000,
+        current_day: int = 1,
         raw_state_json: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         raw_json = json.dumps(raw_state_json or {})
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            INSERT INTO world_state (campaign_id, turn_number, kingdom_name, ruler_name, race, gold, population, military, happiness, religion, raw_state_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO world_state (campaign_id, turn_number, kingdom_name, ruler_name, race, gold, population, military, happiness, religion, current_day, raw_state_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (campaign_id, turn_number, kingdom_name, ruler_name, race, gold, population, military, happiness, religion, raw_json)
+            (campaign_id, turn_number, kingdom_name, ruler_name, race, gold, population, military, happiness, religion, current_day, raw_json)
         )
         self.conn.commit()
         return {
@@ -93,19 +94,21 @@ class Repository:
             "military": military,
             "happiness": happiness,
             "religion": religion,
+            "current_day": current_day,
             "raw_state": raw_state_json or {}
         }
 
     def get_latest_world_state(self, campaign_id: str) -> Optional[Dict[str, Any]]:
         cursor = self.conn.cursor()
         cursor.execute(
-            "SELECT * FROM world_state WHERE campaign_id = ? ORDER BY turn_number DESC LIMIT 1",
+            "SELECT * FROM world_state WHERE campaign_id = ? ORDER BY turn_number DESC, id DESC LIMIT 1",
             (campaign_id,)
         )
         row = cursor.fetchone()
         if not row:
             return None
         res = dict(row)
+        res["current_day"] = res.get("current_day") or 1
         res["raw_state"] = json.loads(res.get("raw_state_json") or "{}")
         return res
 
@@ -119,6 +122,7 @@ class Repository:
         if not row:
             return None
         res = dict(row)
+        res["current_day"] = res.get("current_day") or 1
         res["raw_state"] = json.loads(res.get("raw_state_json") or "{}")
         return res
 
@@ -132,6 +136,7 @@ class Repository:
         result = []
         for row in rows:
             res = dict(row)
+            res["current_day"] = res.get("current_day") or 1
             res["raw_state"] = json.loads(res.get("raw_state_json") or "{}")
             result.append(res)
         return result
@@ -332,13 +337,15 @@ class Repository:
         duracao_estimada: Optional[str] = None,
         objetivo_esperado: Optional[str] = None,
         is_incidente: bool = False,
+        dia_inicio: int = 1,
+        dias_estimados: int = 0,
         criada_no_turno: int = 1
     ):
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            INSERT INTO campaign_tasks (id, campaign_id, titulo, descricao, status, progresso, duracao_estimada, objetivo_esperado, is_incidente, criada_no_turno)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO campaign_tasks (id, campaign_id, titulo, descricao, status, progresso, duracao_estimada, objetivo_esperado, is_incidente, dia_inicio, dias_estimados, criada_no_turno)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 titulo=excluded.titulo,
                 descricao=excluded.descricao,
@@ -347,9 +354,11 @@ class Repository:
                 duracao_estimada=excluded.duracao_estimada,
                 objetivo_esperado=excluded.objetivo_esperado,
                 is_incidente=excluded.is_incidente,
+                dia_inicio=excluded.dia_inicio,
+                dias_estimados=excluded.dias_estimados,
                 criada_no_turno=excluded.criada_no_turno
             """,
-            (task_id, campaign_id, titulo, descricao, status, progresso, duracao_estimada, objetivo_esperado, 1 if is_incidente else 0, criada_no_turno)
+            (task_id, campaign_id, titulo, descricao, status, progresso, duracao_estimada, objetivo_esperado, 1 if is_incidente else 0, dia_inicio, dias_estimados, criada_no_turno)
         )
         self.conn.commit()
 
@@ -361,12 +370,78 @@ class Repository:
         for r in rows:
             d = dict(r)
             d["is_incidente_dinamico"] = bool(d.get("is_incidente", 0))
+            d["dia_inicio"] = d.get("dia_inicio") or 1
+            d["dias_estimados"] = d.get("dias_estimados") or 0
             result.append(d)
         return result
 
     def delete_campaign_task(self, task_id: str, campaign_id: str) -> bool:
         cursor = self.conn.cursor()
         cursor.execute("DELETE FROM campaign_tasks WHERE (id = ? OR titulo = ?) AND campaign_id = ?", (task_id, task_id, campaign_id))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def upsert_periodic_event(
+        self,
+        event_id: str,
+        campaign_id: str,
+        titulo: str,
+        intervalo_dias: int,
+        proximo_disparo_dia: int,
+        descricao: str = "",
+        ultimo_disparo_dia: int = 0,
+        efeito: Optional[Dict[str, Any]] = None,
+        status: str = "ativo",
+        criado_no_turno: int = 1
+    ):
+        cursor = self.conn.cursor()
+        ef_json = json.dumps(efeito or {})
+        cursor.execute(
+            """
+            INSERT INTO periodic_events (id, campaign_id, titulo, descricao, intervalo_dias, ultimo_disparo_dia, proximo_disparo_dia, efeito_json, status, criado_no_turno)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                titulo=excluded.titulo,
+                descricao=excluded.descricao,
+                intervalo_dias=excluded.intervalo_dias,
+                ultimo_disparo_dia=excluded.ultimo_disparo_dia,
+                proximo_disparo_dia=excluded.proximo_disparo_dia,
+                efeito_json=excluded.efeito_json,
+                status=excluded.status,
+                criado_no_turno=excluded.criado_no_turno
+            """,
+            (event_id, campaign_id, titulo, descricao, intervalo_dias, ultimo_disparo_dia, proximo_disparo_dia, ef_json, status, criado_no_turno)
+        )
+        self.conn.commit()
+
+    def get_periodic_events(self, campaign_id: str) -> List[Dict[str, Any]]:
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM periodic_events WHERE campaign_id = ? ORDER BY proximo_disparo_dia ASC, id ASC", (campaign_id,))
+        rows = cursor.fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["efeito"] = json.loads(d.get("efeito_json") or "{}")
+            result.append(d)
+        return result
+
+    def get_due_periodic_events(self, campaign_id: str, current_day: int) -> List[Dict[str, Any]]:
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM periodic_events WHERE campaign_id = ? AND status = 'ativo' AND proximo_disparo_dia <= ? ORDER BY proximo_disparo_dia ASC",
+            (campaign_id, current_day)
+        )
+        rows = cursor.fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["efeito"] = json.loads(d.get("efeito_json") or "{}")
+            result.append(d)
+        return result
+
+    def delete_periodic_event(self, event_id: str, campaign_id: str) -> bool:
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM periodic_events WHERE (id = ? OR titulo = ?) AND campaign_id = ?", (event_id, event_id, campaign_id))
         self.conn.commit()
         return cursor.rowcount > 0
 
@@ -378,6 +453,7 @@ class Repository:
         rei: str,
         populacao: Any = "10000",
         poder_militar: Any = "1000",
+        raca: str = "Humano",
         relacionamento: int = 50,
         status_diplomatico: str = "neutro",
         historico_notas: Optional[str] = None
@@ -385,18 +461,19 @@ class Repository:
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            INSERT INTO campaign_allies (id, campaign_id, nome, rei, populacao, poder_militar, relacionamento, status_diplomatico, historico_notas)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO campaign_allies (id, campaign_id, nome, rei, raca, populacao, poder_militar, relacionamento, status_diplomatico, historico_notas)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 nome=excluded.nome,
                 rei=excluded.rei,
+                raca=excluded.raca,
                 populacao=excluded.populacao,
                 poder_militar=excluded.poder_militar,
                 relacionamento=excluded.relacionamento,
                 status_diplomatico=excluded.status_diplomatico,
                 historico_notas=excluded.historico_notas
             """,
-            (ally_id, campaign_id, nome, rei, str(populacao), str(poder_militar), int(relacionamento), status_diplomatico, historico_notas)
+            (ally_id, campaign_id, nome, rei, str(raca or "Humano"), str(populacao), str(poder_militar), int(relacionamento), status_diplomatico, historico_notas)
         )
         self.conn.commit()
 
@@ -422,14 +499,15 @@ class Repository:
         x: float = 0.0,
         y: float = 0.0,
         status: str = "ativo",
+        size: str = "medio",
         metadata: Optional[Dict[str, Any]] = None
     ):
         cursor = self.conn.cursor()
         meta_json = json.dumps(metadata or {})
         cursor.execute(
             """
-            INSERT INTO campaign_map_nodes (id, campaign_id, label, node_type, emoji, x, y, status, metadata_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO campaign_map_nodes (id, campaign_id, label, node_type, emoji, x, y, status, size, metadata_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id, campaign_id) DO UPDATE SET
                 label=excluded.label,
                 node_type=excluded.node_type,
@@ -437,9 +515,10 @@ class Repository:
                 x=excluded.x,
                 y=excluded.y,
                 status=excluded.status,
+                size=excluded.size,
                 metadata_json=excluded.metadata_json
             """,
-            (node_id, campaign_id, label, node_type, emoji, float(x), float(y), status, meta_json)
+            (node_id, campaign_id, label, node_type, emoji, float(x), float(y), status, size, meta_json)
         )
         self.conn.commit()
 
@@ -450,6 +529,7 @@ class Repository:
         result = []
         for r in rows:
             d = dict(r)
+            d["size"] = d.get("size") or "medio"
             d["metadata"] = json.loads(d.get("metadata_json") or "{}")
             result.append(d)
         return result
@@ -463,6 +543,50 @@ class Repository:
         cursor.execute("DELETE FROM campaign_map_nodes WHERE (id = ? OR label = ?) AND campaign_id = ?", (node_id, node_id, campaign_id))
         self.conn.commit()
         return cursor.rowcount > 0
+
+    def link_item_to_map_node(self, item_id: str, campaign_id: str, node_id: str) -> bool:
+        items = self.get_campaign_items(campaign_id)
+        matched = [i for i in items if i["id"] == str(item_id) or i["nome"] == str(item_id)]
+        if not matched:
+            return False
+        target = matched[0]
+        attrs = target.get("atributos", {})
+        attrs["no_mapa"] = True
+        attrs["map_node_id"] = node_id
+        attrs["posicionavel_no_mapa"] = True
+        self.upsert_campaign_item(
+            item_id=target["id"],
+            campaign_id=campaign_id,
+            nome=target["nome"],
+            categoria=target.get("categoria", "estrutura"),
+            descricao=target.get("descricao", ""),
+            atributos=attrs,
+            adquirido_no_turno=target.get("adquirido_no_turno", 1)
+        )
+        return True
+
+    def unlink_item_from_map_node(self, item_id: str, campaign_id: str) -> bool:
+        items = self.get_campaign_items(campaign_id)
+        matched = [i for i in items if i["id"] == str(item_id) or i["nome"] == str(item_id)]
+        if not matched:
+            return False
+        target = matched[0]
+        attrs = target.get("atributos", {})
+        node_id = attrs.get("map_node_id")
+        attrs["no_mapa"] = False
+        attrs["map_node_id"] = None
+        self.upsert_campaign_item(
+            item_id=target["id"],
+            campaign_id=campaign_id,
+            nome=target["nome"],
+            categoria=target.get("categoria", "estrutura"),
+            descricao=target.get("descricao", ""),
+            atributos=attrs,
+            adquirido_no_turno=target.get("adquirido_no_turno", 1)
+        )
+        if node_id:
+            self.delete_map_node(node_id, campaign_id)
+        return True
 
     def upsert_map_edge(
         self,

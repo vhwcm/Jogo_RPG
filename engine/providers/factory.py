@@ -20,6 +20,30 @@ class MockFallbackProvider(BaseLLMProvider):
         return "Os oráculos vislumbram o destino em silêncio. (Modo Offline / Simulador Narrativo Ativo)"
 
     def generate_json(self, prompt: str, system_instruction: str = "", temperature: float = 0.4) -> Dict[str, Any]:
+        if "ÁRBITRO DE REGRAS" in system_instruction or "ORDEM DO JOGADOR:" in prompt:
+            user_order = prompt.split("ORDEM DO JOGADOR:")[-1] if "ORDEM DO JOGADOR:" in prompt else prompt
+            opts = []
+            if "1" in user_order:
+                opts.append(1)
+            if "2" in user_order:
+                opts.append(2)
+            if "3" in user_order:
+                opts.append(3)
+            return {
+                "intencao_detectada": "Ordem executada",
+                "opcoes_selecionadas": opts,
+                "delta_dinheiro": None,
+                "delta_poder_militar": None,
+                "delta_populacao": None,
+                "delta_felicidade": None,
+                "dias_passados": 7,
+                "tipo_execucao": "imediata",
+                "viabilidade": True,
+                "motivo_inviabilidade": "",
+                "diretrizes_narrador": "Executar a ordem com precisão.",
+                "tarefas_atualizadas": []
+            }
+
         kingdom_match = re.search(r"reino\s+['\"]([^'\"]+)['\"]", prompt, re.IGNORECASE)
         if not kingdom_match:
             kingdom_match = re.search(r"Reino:\s*([^\n\r]+)", prompt)
@@ -266,6 +290,7 @@ class MockFallbackProvider(BaseLLMProvider):
                         "id": "reino_sylvandor",
                         "nome": "Reino de Sylvandor",
                         "rei": "Arquidruida Thalor",
+                        "raca": "Elfo",
                         "relacionamento": 75,
                         "status_diplomatico": "aliado",
                         "poder_militar": 2400,

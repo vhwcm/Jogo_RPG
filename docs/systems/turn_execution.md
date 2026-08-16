@@ -16,10 +16,11 @@ O ciclo de vida de execução de um turno é o coração operacional do **AI RPG
        ├─► a. Obter último status do reino (Repository.get_latest_world_state)
        ├─► b. Obter histórico imediato de turnos (Repository.get_history)
        ├─► c. Buscar memórias RAG relevantes (VectorStore.search)
-       ├─► d. Recuperar resumo acumulado de capítulos (campaigns.summary)
+       ├─► d. Recuperar eventos periódicos e tarefas ativas
+       ├─► e. Executar arbitragem com ActionEvaluator + FormulaEvaluator (cálculo determinístico de impostos e eventos)
        │
        ▼
-3. [ContextBuilder.build_prompt()] -> Monta instrução completa do Game Master
+3. [ContextBuilder.build_prompt()] -> Monta instrução completa do Game Master (com eventos disparados e projeção)
        │
        ▼
 4. [LLMFactory -> FallbackLLMProvider.generate_json(prompt)]

@@ -20,7 +20,44 @@ class Task:
     duracao_estimada: Optional[str] = None
     objetivo_esperado: Optional[str] = None
     is_incidente_dinamico: bool = False
+    dia_inicio: int = 1
+    dias_estimados: int = 0
     criada_no_turno: int = 1
+
+@dataclass
+class PeriodicEvent:
+    id: str
+    campaign_id: str
+    titulo: str
+    intervalo_dias: int
+    proximo_disparo_dia: int
+    descricao: str = ""
+    ultimo_disparo_dia: int = 0
+    efeito: Dict[str, Any] = field(default_factory=dict)
+    status: str = "ativo"
+    criado_no_turno: int = 1
+
+AVAILABLE_RACES: List[str] = [
+    "Humano",
+    "Elfo",
+    "Anão",
+    "Orc",
+    "Centauro",
+    "Demônio",
+    "Djinn",
+    "Dragão",
+    "Elemental",
+    "Fauno",
+    "Gnomo",
+    "Goblin",
+    "Leprechaun",
+    "Mago",
+    "Morto Vivo",
+    "Rinoceronte",
+    "Sereia",
+    "Trol",
+    "Vampiro"
+]
 
 @dataclass
 class ImperioAliado:
@@ -29,6 +66,7 @@ class ImperioAliado:
     rei: str
     populacao: Union[int, str]
     poder_militar: Union[int, str]
+    raca: str = "Humano"
     relacionamento: int = 50
     status_diplomatico: str = "neutro"
     historico_notas: Optional[str] = None
@@ -42,6 +80,7 @@ class MapNode:
     x: float = 0.0
     y: float = 0.0
     status: str = "ativo"
+    size: str = "medio"
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
@@ -66,6 +105,8 @@ class KingdomStatus:
     religião: str = "Nenhuma"
     poder_militar: int = 1000
     felicidade: str = "70%"
+    dia_atual: int = 1
+    dias_passados: int = 0
 
 @dataclass
 class ImpactoPrevisto:
@@ -77,6 +118,23 @@ class ImpactoPrevisto:
 class OpcaoDecisao:
     texto: str
     impacto: Optional[ImpactoPrevisto] = None
+
+@dataclass
+class EvaluationResult:
+    intencao_detectada: str
+    opcoes_selecionadas: List[int] = field(default_factory=list)
+    delta_dinheiro: Optional[int] = None
+    delta_poder_militar: Optional[int] = None
+    delta_populacao: Optional[int] = None
+    delta_felicidade: Optional[int] = None
+    dias_passados: int = 1
+    tipo_execucao: str = "imediata"
+    dias_duracao_tarefa: Optional[int] = None
+    viabilidade: bool = True
+    motivo_inviabilidade: str = ""
+    diretrizes_narrador: str = ""
+    eventos_periodicos_disparados: List[Dict[str, Any]] = field(default_factory=list)
+    tarefas_atualizadas: List[Dict[str, Any]] = field(default_factory=list)
 
 @dataclass
 class TurnResponse:

@@ -314,3 +314,46 @@ def test_mock_fallback_building_orders(test_engine):
     details = test_engine.get_campaign_state_details(camp_id)
     assert any("posto" in i["nome"].lower() or i["categoria"] == "posto_avancado" for i in details["items"])
 
+def test_race_knowledge_and_enemy_empire_creation(test_engine):
+    from engine.domain.models import AVAILABLE_RACES
+    assert "Humano" in AVAILABLE_RACES
+    assert "Elfo" in AVAILABLE_RACES
+    assert "Orc" in AVAILABLE_RACES
+    assert "Vampiro" in AVAILABLE_RACES
+    assert len(AVAILABLE_RACES) == 19
+
+    test_engine.create_campaign("Império dos Orcs", "Grommash", "Draenor", "Orc")
+    camp_id = test_engine.list_campaigns()[0]["id"]
+
+    actions = [
+        GameAction(
+            action_type="add_ally",
+            payload={
+                "id": "imperio_inimigo_vampiro",
+                "nome": "Corte Carmesim de Sylvanis",
+                "rei": "Conde Vladislav",
+                "raca": "Vampiro",
+                "populacao": 45000,
+                "poder_militar": 8000,
+                "relacionamento": -60,
+                "status_diplomatico": "hostil",
+                "historico_notas": "Império rival que ameaça nossas fronteiras."
+            }
+        )
+    ]
+    test_engine.apply_actions(camp_id, actions, turn_number=2)
+
+    details = test_engine.get_campaign_state_details(camp_id)
+    assert len(details["allies"]) == 1
+    enemy = details["allies"][0]
+    assert enemy["nome"] == "Corte Carmesim de Sylvanis"
+    assert enemy["raca"] == "Vampiro"
+    assert enemy["status_diplomatico"] == "hostil"
+    assert enemy["relacionamento"] == -60
+
+    context = test_engine.context_builder.build_prompt_context(camp_id, "Defender as fronteiras contra os Vampiros", [])
+    assert "Raça do Soberano / Reino Atual: Orc" in context
+    assert "Vampiro" in context
+    assert "Todas as Raças Disponíveis no Mundo:" in context
+    assert "Corte Carmesim de Sylvanis (Soberano: Conde Vladislav | Raça: Vampiro)" in context
+

@@ -82,3 +82,4 @@ Nem toda tarefa exige uma especificação completa em `specs/`:
   - `server/`: Camada HTTP FastAPI com DTOs Pydantic. Zero regras de negócio em `server/app.py`.
 - **Configuração Centralizada**: Todas as variáveis e segredos devem ser lidos de `config.py`. Nunca leia `.env` ou `os.environ` diretamente nos módulos internos.
 - **Sincronia Estrita de Documentação**: Se o comportamento do código mudar, a documentação em `docs/` deve ser atualizada no mesmo commit/etapa.
+- **Commit Descritivo e Push Obrigatório**: Sempre após concluir alterações no código, testes ou documentação, crie um commit atômico com mensagem clara e descritiva (padrão semântico) e execute `git push` para sincronizar o repositório remoto.

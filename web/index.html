@@ -78,122 +78,131 @@
             </section>
 
             <section class="panel-tactical" id="panel-tactical">
+                <div class="tactical-top-panel" id="tactical-top-panel">
+                    <div class="tactical-top-header" id="tactical-top-header">
+                        <div class="tactical-toolbar-actions">
+                            <button type="button" id="btn-audio-toggle" class="toolbar-btn" title="Música Ambiente">
+                                <span id="audio-status-icon" class="toolbar-icon">🎵</span>
+                                <span id="audio-status-label" class="toolbar-label">Música</span>
+                            </button>
+                            <div class="toolbar-divider"></div>
+                            <button type="button" id="btn-new-game" class="toolbar-btn" title="Fundar Novo Reino">
+                                <span class="toolbar-icon">👑</span>
+                                <span class="toolbar-label">Novo Reino</span>
+                            </button>
+                            <button type="button" id="btn-campaigns-drawer" class="toolbar-btn" title="Aventuras / Saves">
+                                <span class="toolbar-icon">📜</span>
+                                <span class="toolbar-label">Aventuras</span>
+                            </button>
+                            <button type="button" id="btn-inventory-drawer" class="toolbar-btn" title="Ativos & Estruturas">
+                                <span class="toolbar-icon">🏛️</span>
+                                <span class="toolbar-label">Ativos</span>
+                                <span id="badge-inventory-count" class="toolbar-badge">0</span>
+                            </button>
+                            <button type="button" id="btn-quests-drawer" class="toolbar-btn" title="Quests & Objetivos">
+                                <span class="toolbar-icon">⚔️</span>
+                                <span class="toolbar-label">Quests</span>
+                                <span id="badge-tasks-count" class="toolbar-badge">0</span>
+                            </button>
+                            <button type="button" id="btn-events-drawer" class="toolbar-btn" title="Cronograma & Eventos Periódicos">
+                                <span class="toolbar-icon">⏳</span>
+                                <span class="toolbar-label">Eventos</span>
+                                <span id="badge-events-count" class="toolbar-badge">0</span>
+                            </button>
+                        </div>
+                        <div class="tactical-toolbar-maptools">
+                            <div class="toolbar-divider"></div>
+                            <div class="toolbar-graph-controls">
+                                <button type="button" id="btn-map-zoom-in" class="toolbar-ctrl-btn" title="Zoom +">+</button>
+                                <button type="button" id="btn-map-zoom-out" class="toolbar-ctrl-btn" title="Zoom -">−</button>
+                                <button type="button" id="btn-map-recenter" class="toolbar-ctrl-btn" title="Centralizar Capital">⌖</button>
+                                <button type="button" id="btn-map-reset-camera" class="toolbar-ctrl-btn" title="Reset Câmera">⟳</button>
+                                <select id="map-layer-filter" class="toolbar-select" title="Filtro de Camada">
+                                    <option value="all">Todas Camadas</option>
+                                    <option value="capital">Capitais</option>
+                                    <option value="estrutura">Estruturas & Obras</option>
+                                    <option value="tropa">Tropas & Patrulhas</option>
+                                    <option value="reino_vizinho">Reinos Vizinhos</option>
+                                    <option value="bioma">Biomas & Natureza</option>
+                                </select>
+                            </div>
+                            <div class="toolbar-divider"></div>
+                            <span id="map-nodes-count" class="toolbar-badge">0</span>
+                            <button type="button" id="btn-toggle-top-panel" class="toolbar-ctrl-btn toggle-top-btn" title="Ocultar/Expandir Painel Superior">▲</button>
+                        </div>
+                    </div>
+
+                    <div class="tactical-inspector-container hidden" id="tactical-inspector-container">
+                        <div class="inspector-panel" id="tactical-inspector">
+                            <div class="inspector-header">
+                                <div class="inspector-header-left">
+                                    <span class="inspector-icon" id="inspector-emoji">📍</span>
+                                    <div class="inspector-titles">
+                                        <span class="inspector-name" id="inspector-name">—</span>
+                                        <span class="inspector-type" id="inspector-type">Entidade</span>
+                                    </div>
+                                </div>
+                                <div class="inspector-header-right">
+                                    <span class="inspector-status-pill" id="inspector-status">ATIVO</span>
+                                    <button type="button" id="btn-close-inspector" class="inspector-close-btn" title="Fechar Detalhes">✖</button>
+                                </div>
+                            </div>
+                            <div class="inspector-body" id="inspector-body"></div>
+                            <div class="inspector-actions" id="inspector-actions"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="tactical-canvas-container" id="map-canvas-wrapper">
                     <canvas id="tactical-map-canvas"></canvas>
                     <div id="map-tooltip" class="map-tooltip hidden"></div>
-                </div>
 
-                <div class="map-corner-widget map-widget-top-left" id="map-overlay-quests">
-                    <div class="map-widget-header">
-                        <div class="map-widget-title-group">
-                            <span class="map-widget-icon">⚔️</span>
-                            <span class="map-widget-title">Quests Ativas</span>
+                    <div class="map-corner-widget map-widget-top-left" id="map-overlay-quests">
+                        <div class="map-widget-header">
+                            <div class="map-widget-title-group">
+                                <span class="map-widget-icon">⚔️</span>
+                                <span class="map-widget-title">Quests Ativas</span>
+                            </div>
+                            <span id="map-badge-quests" class="map-widget-badge">0</span>
                         </div>
-                        <span id="map-badge-quests" class="map-widget-badge">0</span>
+                        <div id="map-quests-list" class="map-widget-body"></div>
                     </div>
-                    <div id="map-quests-list" class="map-widget-body"></div>
-                </div>
 
-                <div class="map-corner-widget map-widget-bottom-left" id="map-overlay-events">
-                    <div class="map-widget-header">
-                        <div class="map-widget-title-group">
-                            <span class="map-widget-icon">⏳</span>
-                            <span class="map-widget-title">Eventos & Cronograma</span>
+                    <div class="map-corner-widget map-widget-bottom-left" id="map-overlay-events">
+                        <div class="map-widget-header">
+                            <div class="map-widget-title-group">
+                                <span class="map-widget-icon">⏳</span>
+                                <span class="map-widget-title">Eventos & Cronograma</span>
+                            </div>
+                            <span id="map-badge-events" class="map-widget-badge">0</span>
                         </div>
-                        <span id="map-badge-events" class="map-widget-badge">0</span>
+                        <div id="map-events-list" class="map-widget-body"></div>
                     </div>
-                    <div id="map-events-list" class="map-widget-body"></div>
-                </div>
 
-                <div class="map-corner-widget map-widget-top-right" id="map-overlay-assets">
-                    <div class="map-widget-header">
-                        <div class="map-widget-title-group">
-                            <span class="map-widget-icon">🏛️</span>
-                            <span class="map-widget-title">Ativos & Estruturas</span>
+                    <div class="map-corner-widget map-widget-top-right" id="map-overlay-assets">
+                        <div class="map-widget-header">
+                            <div class="map-widget-title-group">
+                                <span class="map-widget-icon">🏛️</span>
+                                <span class="map-widget-title">Ativos & Estruturas</span>
+                            </div>
+                            <span id="map-badge-assets" class="map-widget-badge">0</span>
                         </div>
-                        <span id="map-badge-assets" class="map-widget-badge">0</span>
+                        <div id="map-assets-list" class="map-widget-body"></div>
                     </div>
-                    <div id="map-assets-list" class="map-widget-body"></div>
-                </div>
 
-                <div class="map-corner-widget map-widget-bottom-right map-portrait-widget" id="map-overlay-portrait">
-                    <div class="map-portrait-avatar-wrapper">
-                        <img id="map-portrait-img" class="map-portrait-img" src="assets/lideres/humano.jpeg" alt="Líder do Reino">
-                    </div>
-                    <div class="map-portrait-info">
-                        <span class="map-portrait-label">SOBERANO(A)</span>
-                        <div class="map-portrait-name" id="map-portrait-name">Arthur Pendragon</div>
-                        <div class="map-portrait-meta">
-                            <span class="map-portrait-kingdom" id="map-portrait-kingdom">Valdrin</span>
-                            <span class="map-portrait-race" id="map-portrait-race">Humano</span>
+                    <div class="map-corner-widget map-widget-bottom-right map-portrait-widget" id="map-overlay-portrait">
+                        <div class="map-portrait-avatar-wrapper">
+                            <img id="map-portrait-img" class="map-portrait-img" src="assets/lideres/humano.jpeg" alt="Líder do Reino">
                         </div>
-                    </div>
-                </div>
-
-                <div class="tactical-toolbar glass-panel" id="tactical-toolbar">
-                    <button type="button" id="btn-audio-toggle" class="toolbar-btn" title="Música Ambiente">
-                        <span id="audio-status-icon" class="toolbar-icon">🎵</span>
-                        <span id="audio-status-label" class="toolbar-label">Música</span>
-                    </button>
-                    <div class="toolbar-divider"></div>
-                    <button type="button" id="btn-new-game" class="toolbar-btn" title="Fundar Novo Reino">
-                        <span class="toolbar-icon">👑</span>
-                        <span class="toolbar-label">Novo Reino</span>
-                    </button>
-                    <button type="button" id="btn-campaigns-drawer" class="toolbar-btn" title="Aventuras / Saves">
-                        <span class="toolbar-icon">📜</span>
-                        <span class="toolbar-label">Aventuras</span>
-                    </button>
-                    <button type="button" id="btn-inventory-drawer" class="toolbar-btn" title="Ativos & Estruturas">
-                        <span class="toolbar-icon">🏛️</span>
-                        <span class="toolbar-label">Ativos</span>
-                        <span id="badge-inventory-count" class="toolbar-badge">0</span>
-                    </button>
-                    <button type="button" id="btn-quests-drawer" class="toolbar-btn" title="Quests & Objetivos">
-                        <span class="toolbar-icon">⚔️</span>
-                        <span class="toolbar-label">Quests</span>
-                        <span id="badge-tasks-count" class="toolbar-badge">0</span>
-                    </button>
-                    <button type="button" id="btn-events-drawer" class="toolbar-btn" title="Cronograma & Eventos Periódicos">
-                        <span class="toolbar-icon">⏳</span>
-                        <span class="toolbar-label">Eventos</span>
-                        <span id="badge-events-count" class="toolbar-badge">0</span>
-                    </button>
-                    <div class="toolbar-divider"></div>
-                    <div class="toolbar-graph-controls">
-                        <button type="button" id="btn-map-zoom-in" class="toolbar-ctrl-btn" title="Zoom +">+</button>
-                        <button type="button" id="btn-map-zoom-out" class="toolbar-ctrl-btn" title="Zoom -">−</button>
-                        <button type="button" id="btn-map-recenter" class="toolbar-ctrl-btn" title="Centralizar Capital">⌖</button>
-                        <button type="button" id="btn-map-reset-camera" class="toolbar-ctrl-btn" title="Reset Câmera">⟳</button>
-                        <select id="map-layer-filter" class="toolbar-select" title="Filtro de Camada">
-                            <option value="all">Todas Camadas</option>
-                            <option value="capital">Capitais</option>
-                            <option value="estrutura">Estruturas & Obras</option>
-                            <option value="tropa">Tropas & Patrulhas</option>
-                            <option value="reino_vizinho">Reinos Vizinhos</option>
-                            <option value="bioma">Biomas & Natureza</option>
-                        </select>
-                    </div>
-                    <div class="toolbar-divider"></div>
-                    <span id="map-nodes-count" class="toolbar-badge">0</span>
-                </div>
-
-                <div class="inspector-panel glass-panel hidden" id="tactical-inspector">
-                    <div class="inspector-header">
-                        <div class="inspector-header-left">
-                            <span class="inspector-icon" id="inspector-emoji">📍</span>
-                            <div class="inspector-titles">
-                                <span class="inspector-name" id="inspector-name">—</span>
-                                <span class="inspector-type" id="inspector-type">Entidade</span>
+                        <div class="map-portrait-info">
+                            <span class="map-portrait-label">SOBERANO(A)</span>
+                            <div class="map-portrait-name" id="map-portrait-name">Arthur Pendragon</div>
+                            <div class="map-portrait-meta">
+                                <span class="map-portrait-kingdom" id="map-portrait-kingdom">Valdrin</span>
+                                <span class="map-portrait-race" id="map-portrait-race">Humano</span>
                             </div>
                         </div>
-                        <div class="inspector-header-right">
-                            <span class="inspector-status-pill" id="inspector-status">ATIVO</span>
-                            <button type="button" id="btn-close-inspector" class="inspector-close-btn">✖</button>
-                        </div>
                     </div>
-                    <div class="inspector-body" id="inspector-body"></div>
-                    <div class="inspector-actions" id="inspector-actions"></div>
                 </div>
             </section>
         </main>

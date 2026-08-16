@@ -72,6 +72,21 @@ document.addEventListener('DOMContentLoaded', () => {
         btnCloseInspector.onclick = () => UI.closeInspector();
     }
 
+    const btnToggleTop = document.getElementById('btn-toggle-top-panel');
+    const tacticalTopPanel = document.getElementById('tactical-top-panel');
+    if (btnToggleTop && tacticalTopPanel) {
+        btnToggleTop.addEventListener('click', (e) => {
+            e.stopPropagation();
+            tacticalTopPanel.classList.toggle('collapsed');
+            const isCollapsed = tacticalTopPanel.classList.contains('collapsed');
+            btnToggleTop.textContent = isCollapsed ? '▼' : '▲';
+            btnToggleTop.title = isCollapsed ? 'Expandir Painel Superior' : 'Ocultar Painel Superior';
+            if (window.TacticalMap && window.TacticalMap.resize) {
+                setTimeout(() => window.TacticalMap.resize(), 50);
+            }
+        });
+    }
+
     checkHealth();
     checkExistingCampaigns();
 

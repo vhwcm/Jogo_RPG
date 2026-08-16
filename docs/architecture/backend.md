@@ -24,6 +24,8 @@ O módulo `server/` expõe a API RESTful do jogo através do framework FastAPI.
 | `GET` | `/api/campaigns/{id}/export` | Exporta savegame completo em JSON | - | `SavegameExportDTO` |
 | `POST` | `/api/campaigns/import` | Importa savegame a partir de JSON | `SavegameImportDTO` | `CampaignSummaryDTO` |
 | `POST` | `/api/campaigns/{id}/estimate_action` | Estima impacto e custo de ação livre | `EstimateActionDTO` | `ActionEstimateDTO` |
+| `POST` | `/api/campaigns/{id}/assets/{asset_id}/place_on_map` | Posiciona ativo no mapa tático em órbita do reino | `PlaceAssetRequest` | `Dict[str, Any]` |
+| `POST` | `/api/campaigns/{id}/assets/{asset_id}/unplace_from_map` | Remove ativo do mapa tático mantendo no inventário | - | `Dict[str, Any]` |
 
 ---
 

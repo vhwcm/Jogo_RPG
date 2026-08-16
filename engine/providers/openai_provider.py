@@ -1,12 +1,12 @@
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from engine.providers.base import BaseLLMProvider
 from engine.utils import generate_fallback_embedding
 import config
 
 class OpenAIProvider(BaseLLMProvider):
-    def __init__(self, api_key: str = "", model_name: str = ""):
-        self.api_key = api_key or config.OPENAI_API_KEY
+    def __init__(self, api_key: Optional[str] = None, model_name: str = ""):
+        self.api_key = config.OPENAI_API_KEY if api_key is None else api_key
         self.model_name = model_name or config.OPENAI_MODEL
         self.embedding_model = config.OPENAI_EMBEDDING_MODEL
         self._client = None

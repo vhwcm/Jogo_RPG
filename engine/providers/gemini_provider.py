@@ -5,26 +5,28 @@ from engine.utils import generate_fallback_embedding
 import config
 
 STABLE_GENERATION_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash-8b",
-    "gemini-1.5-flash",
-    "gemini-2.5-flash",
+    "gemini-3.7-flash",
+    "gemini-flash-lite-latest",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
     "gemini-flash-latest",
+    "gemini-2.5-flash",
     "gemma-4-31b-it",
     "gemma-4-26b-a4b-it"
 ]
 
 EMBEDDING_CANDIDATES = [
-    "text-embedding-004",
     "gemini-embedding-2",
+    "gemini-embedding-001",
+    "text-embedding-004",
     "gemini-embedding-2-preview"
 ]
 
 class GeminiProvider(BaseLLMProvider):
-    def __init__(self, api_key: str = "", model_name: str = ""):
-        self.api_key = api_key or config.GEMINI_API_KEY
+    def __init__(self, api_key: Optional[str] = None, model_name: str = ""):
+        self.api_key = config.GEMINI_API_KEY if api_key is None else api_key
         self.model_name = model_name or config.GEMINI_MODEL
-        self.embedding_model = config.GEMINI_EMBEDDING_MODEL or "text-embedding-004"
+        self.embedding_model = config.GEMINI_EMBEDDING_MODEL or "gemini-embedding-2"
         self._genai_genai = None
         self._legacy_genai = None
         self._tested_and_working = False

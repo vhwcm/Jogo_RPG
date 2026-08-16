@@ -116,6 +116,8 @@ body {
     min-width: 0;
     overflow: hidden;
     position: relative;
+    display: flex;
+    flex-direction: column;
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-glass);
     background: radial-gradient(circle at center, #11111c 0%, #06060a 100%);

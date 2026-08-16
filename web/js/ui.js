@@ -492,7 +492,35 @@ const UI = {
             let effectHtml = '';
             const ef = ev.efeito || {};
             const efKeys = Object.keys(ef);
-            if (efKeys.length > 0) {
+
+            if (ef.formula) {
+                let pop = 10000;
+                let hap = 0.70;
+                const popEl = document.getElementById('hud-population');
+                const hapEl = document.getElementById('hud-happiness');
+                if (popEl && popEl.textContent) {
+                    const parsedPop = parseInt(popEl.textContent.replace(/[^0-9]/g, ''));
+                    if (!isNaN(parsedPop) && parsedPop > 0) pop = parsedPop;
+                }
+                if (hapEl && hapEl.textContent) {
+                    const parsedHap = parseFloat(hapEl.textContent.replace(/[^0-9.]/g, ''));
+                    if (!isNaN(parsedHap)) hap = parsedHap > 1 ? parsedHap / 100 : parsedHap;
+                }
+
+                let estimatedVal = null;
+                const aliq = ef.aliquota || 0.05;
+                if (ef.formula.includes('populacao') && ef.formula.includes('felicidade')) {
+                    estimatedVal = Math.round((pop * aliq) * hap);
+                }
+
+                effectHtml = '<div class="attr-tag-group">';
+                const formulaLabel = ef.descricao_calculo || ef.formula;
+                effectHtml += `<span class="attr-tag" style="color: #93c5fd;">📐 <strong>Cálculo:</strong> ${formulaLabel}</span>`;
+                if (estimatedVal !== null) {
+                    effectHtml += `<span class="attr-tag" style="color: #fbbf24;">💰 <strong>Projeção:</strong> +${estimatedVal} ${ef.recurso || 'ouro'}</span>`;
+                }
+                effectHtml += '</div>';
+            } else if (efKeys.length > 0) {
                 effectHtml = '<div class="attr-tag-group">';
                 efKeys.forEach(k => {
                     const val = ef[k];
@@ -868,8 +896,19 @@ const UI = {
     },
 
     openInspector(node) {
+        const topPanel = document.getElementById('tactical-top-panel');
+        const container = document.getElementById('tactical-inspector-container');
         const drawer = document.getElementById('tactical-inspector') || document.getElementById('inspector-drawer');
-        if (!drawer || !node) return;
+        const btnToggleTop = document.getElementById('btn-toggle-top-panel');
+        if (!node) return;
+
+        if (topPanel && topPanel.classList.contains('collapsed')) {
+            topPanel.classList.remove('collapsed');
+            if (btnToggleTop) {
+                btnToggleTop.textContent = '▲';
+                btnToggleTop.title = 'Ocultar Painel Superior';
+            }
+        }
 
         this.inspectorOpen = true;
 
@@ -908,7 +947,12 @@ const UI = {
         this.buildInspectorLore(body, meta);
         this.buildInspectorActions(actions, node);
 
-        drawer.classList.remove('hidden');
+        if (container) container.classList.remove('hidden');
+        if (drawer) drawer.classList.remove('hidden');
+
+        if (window.TacticalMap && window.TacticalMap.resize) {
+            window.TacticalMap.resize();
+        }
     },
 
     buildInspectorAttributes(body, meta, nodeType) {
@@ -1077,10 +1121,17 @@ const UI = {
     },
 
     closeInspector() {
+        const container = document.getElementById('tactical-inspector-container');
         const drawer = document.getElementById('tactical-inspector') || document.getElementById('inspector-drawer');
+        if (container) {
+            container.classList.add('hidden');
+        }
         if (drawer) {
             drawer.classList.add('hidden');
         }
         this.inspectorOpen = false;
+        if (window.TacticalMap && window.TacticalMap.resize) {
+            window.TacticalMap.resize();
+        }
     }
 };

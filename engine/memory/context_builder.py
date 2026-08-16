@@ -75,7 +75,9 @@ class ContextBuilder:
             if evaluation_result.eventos_periodicos_disparados:
                 lines.append("EVENTOS PERIÓDICOS DISPARADOS:")
                 for ev in evaluation_result.eventos_periodicos_disparados:
-                    lines.append(f"- Evento '{ev.get('titulo')}': {ev.get('descricao', '')} (Efeito: {ev.get('efeito')})")
+                    ef_calc = ev.get("efeito_calculado", {})
+                    ef_desc = ", ".join(f"{k}: {v:+d}" for k, v in ef_calc.items()) if ef_calc else str(ev.get("efeito"))
+                    lines.append(f"- Evento '{ev.get('titulo')}': {ev.get('descricao', '')} (Efeito Calculado: {ef_desc})")
             if evaluation_result.diretrizes_narrador:
                 lines.append(f"Instruções Específicas: {evaluation_result.diretrizes_narrador}")
             lines.append("")

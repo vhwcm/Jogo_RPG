@@ -58,6 +58,12 @@ Registra objetivos ativos, pendentes ou concluídos com suas respectivas metas e
 ### `items` & `locations`
 Tabelas auxiliares para inventário do reino e locais descobertos no mapa mundi.
 
+### `campaign_map_nodes` & `campaign_map_edges`
+Armazena os vértices e arestas do mapa tático e grafo territorial:
+- `id`, `campaign_id`, `label`, `node_type`, `emoji`, `x`, `y`, `status`.
+- `size`: Escala hierárquica do nó (`mega`, `grande`, `medio`, `pequeno`, `micro`).
+- `metadata_json`: Metadados operacionais e vínculos com ativos (`asset_id`).
+
 ### `memories` (Vector Store)
 Armazena as memórias episódicas do jogo:
 - `content`: Texto descritivo do acontecimento.

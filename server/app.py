@@ -22,7 +22,8 @@ from server.dto import (
     ImportCampaignRequest,
     EstimateActionRequest,
     GameActionDTO,
-    StateDetailsDTO
+    StateDetailsDTO,
+    PlaceAssetRequest
 )
 
 app = FastAPI(title="AI RPG Game Server API", version="2.0.0")
@@ -164,6 +165,34 @@ def execute_turn(req: TurnRequest):
             actions=actions_dto,
             raw_json=turn.raw_json
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/campaigns/{campaign_id}/assets/{asset_id}/place_on_map")
+def place_asset_on_map(campaign_id: str, asset_id: str, req: PlaceAssetRequest):
+    try:
+        result = engine.place_asset_on_map(
+            campaign_id=campaign_id,
+            asset_id=asset_id,
+            x=req.x,
+            y=req.y,
+            node_type=req.node_type,
+            size=req.size,
+            connect_to_capital=req.connect_to_capital
+        )
+        return {"status": "success", "result": result}
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/campaigns/{campaign_id}/assets/{asset_id}/unplace_from_map")
+def unplace_asset_from_map(campaign_id: str, asset_id: str):
+    try:
+        success = engine.unplace_asset_from_map(campaign_id, asset_id)
+        return {"status": "success", "unplaced": success}
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

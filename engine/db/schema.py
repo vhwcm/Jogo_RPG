@@ -125,7 +125,26 @@ CREATE TABLE IF NOT EXISTS campaign_tasks (
     duracao_estimada TEXT,
     objetivo_esperado TEXT,
     is_incidente INTEGER DEFAULT 0,
+    dia_inicio INTEGER DEFAULT 1,
+    dias_estimados INTEGER DEFAULT 0,
     criada_no_turno INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+"""
+
+CREATE_PERIODIC_EVENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS periodic_events (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    titulo TEXT NOT NULL,
+    descricao TEXT DEFAULT '',
+    intervalo_dias INTEGER NOT NULL,
+    ultimo_disparo_dia INTEGER DEFAULT 0,
+    proximo_disparo_dia INTEGER NOT NULL,
+    efeito_json TEXT DEFAULT '{}',
+    status TEXT DEFAULT 'ativo',
+    criado_no_turno INTEGER DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
 );
@@ -137,6 +156,7 @@ CREATE TABLE IF NOT EXISTS campaign_allies (
     campaign_id TEXT NOT NULL,
     nome TEXT NOT NULL,
     rei TEXT NOT NULL,
+    raca TEXT DEFAULT 'Humano',
     populacao TEXT DEFAULT '10000',
     poder_militar TEXT DEFAULT '1000',
     relacionamento INTEGER DEFAULT 50,
@@ -157,6 +177,7 @@ CREATE TABLE IF NOT EXISTS campaign_map_nodes (
     x REAL DEFAULT 0.0,
     y REAL DEFAULT 0.0,
     status TEXT DEFAULT 'ativo',
+    size TEXT DEFAULT 'medio',
     metadata_json TEXT DEFAULT '{}',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id, campaign_id),
@@ -190,6 +211,7 @@ def get_connection(db_path: str) -> sqlite3.Connection:
 def init_db(db_path: str) -> sqlite3.Connection:
     conn = get_connection(db_path)
     with conn:
+        conn.execute(CREATE_CAMPAIGN_ALLIES_TABLE)
         conn.execute(CREATE_CAMPAIGNS_TABLE)
         conn.execute(CREATE_WORLD_STATE_TABLE)
         conn.execute(CREATE_CHARACTERS_TABLE)
@@ -199,7 +221,7 @@ def init_db(db_path: str) -> sqlite3.Connection:
         conn.execute(CREATE_MEMORIES_TABLE)
         conn.execute(CREATE_CAMPAIGN_ITEMS_TABLE)
         conn.execute(CREATE_CAMPAIGN_TASKS_TABLE)
-        conn.execute(CREATE_CAMPAIGN_ALLIES_TABLE)
+        conn.execute(CREATE_PERIODIC_EVENTS_TABLE)
         conn.execute(CREATE_CAMPAIGN_MAP_NODES_TABLE)
         conn.execute(CREATE_CAMPAIGN_MAP_EDGES_TABLE)
 
@@ -208,6 +230,25 @@ def init_db(db_path: str) -> sqlite3.Connection:
         columns = [row[1] for row in cursor.fetchall()]
         if columns and "population" not in columns:
             conn.execute("ALTER TABLE world_state ADD COLUMN population INTEGER DEFAULT 10000;")
+        if columns and "current_day" not in columns:
+            conn.execute("ALTER TABLE world_state ADD COLUMN current_day INTEGER DEFAULT 1;")
+
+        cursor.execute("PRAGMA table_info(campaign_tasks);")
+        task_columns = [row[1] for row in cursor.fetchall()]
+        if task_columns and "dia_inicio" not in task_columns:
+            conn.execute("ALTER TABLE campaign_tasks ADD COLUMN dia_inicio INTEGER DEFAULT 1;")
+        if task_columns and "dias_estimados" not in task_columns:
+            conn.execute("ALTER TABLE campaign_tasks ADD COLUMN dias_estimados INTEGER DEFAULT 0;")
+
+        cursor.execute("PRAGMA table_info(campaign_allies);")
+        ally_columns = [row[1] for row in cursor.fetchall()]
+        if ally_columns and "raca" not in ally_columns:
+            conn.execute("ALTER TABLE campaign_allies ADD COLUMN raca TEXT DEFAULT 'Humano';")
+
+        cursor.execute("PRAGMA table_info(campaign_map_nodes);")
+        node_columns = [row[1] for row in cursor.fetchall()]
+        if node_columns and "size" not in node_columns:
+            conn.execute("ALTER TABLE campaign_map_nodes ADD COLUMN size TEXT DEFAULT 'medio';")
 
         cursor.execute("PRAGMA table_info(campaigns);")
         camp_columns = [row[1] for row in cursor.fetchall()]

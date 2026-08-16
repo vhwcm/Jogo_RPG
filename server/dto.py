@@ -31,6 +31,8 @@ class KingdomStatusDTO(BaseModel):
     religião: str
     poder_militar: int
     felicidade: str
+    dia_atual: int = 1
+    dias_passados: int = 0
 
 class GameActionDTO(BaseModel):
     action_type: str
@@ -53,7 +55,21 @@ class TaskDTO(BaseModel):
     duracao_estimada: Optional[str] = None
     objetivo_esperado: Optional[str] = None
     is_incidente_dinamico: bool = False
+    dia_inicio: int = 1
+    dias_estimados: int = 0
     criada_no_turno: int = 1
+
+class PeriodicEventDTO(BaseModel):
+    id: str
+    campaign_id: str
+    titulo: str
+    intervalo_dias: int
+    proximo_disparo_dia: int
+    descricao: str = ""
+    ultimo_disparo_dia: int = 0
+    efeito: Dict[str, Any] = Field(default_factory=dict)
+    status: str = "ativo"
+    criado_no_turno: int = 1
 
 class ImperioAliadoDTO(BaseModel):
     id: str
@@ -61,6 +77,7 @@ class ImperioAliadoDTO(BaseModel):
     rei: str
     populacao: Union[int, str]
     poder_militar: Union[int, str]
+    raca: str = "Humano"
     relacionamento: int = 50
     status_diplomatico: str = "neutro"
     historico_notas: Optional[str] = None
@@ -73,6 +90,7 @@ class MapNodeDTO(BaseModel):
     x: float = 0.0
     y: float = 0.0
     status: str = "ativo"
+    size: str = "medio"
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 class MapEdgeDTO(BaseModel):
@@ -85,6 +103,7 @@ class MapEdgeDTO(BaseModel):
 class StateDetailsDTO(BaseModel):
     items: List[Dict[str, Any]] = Field(default_factory=list)
     tasks: List[Dict[str, Any]] = Field(default_factory=list)
+    periodic_events: List[Dict[str, Any]] = Field(default_factory=list)
     allies: List[Dict[str, Any]] = Field(default_factory=list)
     map_nodes: List[Dict[str, Any]] = Field(default_factory=list)
     map_edges: List[Dict[str, Any]] = Field(default_factory=list)
@@ -111,3 +130,10 @@ class ImportCampaignRequest(BaseModel):
 
 class EstimateActionRequest(BaseModel):
     action_text: str
+
+class PlaceAssetRequest(BaseModel):
+    x: Optional[float] = None
+    y: Optional[float] = None
+    node_type: Optional[str] = None
+    size: Optional[str] = None
+    connect_to_capital: bool = True

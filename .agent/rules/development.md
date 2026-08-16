@@ -11,6 +11,7 @@ Antes de iniciar qualquer tarefa, avalie sua complexidade e escopo:
   2. Implementar sem comentários no código.
   3. Executar testes pertinentes (`pytest`).
   4. Atualizar documentação apenas se houver impacto funcional visível.
+  5. Criar commit descritivo e executar `git push`.
 
 ### Tarefa Média (Medium)
 - **Critérios**: Novo endpoint REST, novo método de repositório, novo componente de interface, novo provider de LLM.
@@ -20,6 +21,7 @@ Antes de iniciar qualquer tarefa, avalie sua complexidade e escopo:
   3. Implementar seguindo TDD e princípios SOLID.
   4. Validar com testes unitários.
   5. Atualizar documentação afetada em `docs/`.
+  6. Criar commit descritivo e executar `git push`.
 
 ### Tarefa Grande (Large)
 - **Critérios**: Novo sistema do jogo (ex: combate, comércio, facções), mudanças de schema no SQLite, modificações no motor RAG, refatorações amplas.
@@ -31,3 +33,4 @@ Antes de iniciar qualquer tarefa, avalie sua complexidade e escopo:
   5. **Review**: Executar `review-consistency` para auditoria cruzada.
   6. **Update Docs**: Executar `update-docs` para atualizar o conhecimento persistente do projeto e criar novos ADRs se cabível.
   7. **Archive**: Mover a spec para `specs/completed/<feature-name>/`.
+  8. **Commit & Push**: Criar commit descritivo e executar `git push`.

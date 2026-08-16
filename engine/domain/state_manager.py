@@ -12,6 +12,7 @@ from engine.memory.importance import calculate_importance
 from engine.memory.summarizer import CampaignSummarizer
 from engine.domain.models import KingdomStatus, TurnResponse, CampaignInfo, Item, Task, ImperioAliado, GameAction, MapNode, MapEdge, PeriodicEvent, EvaluationResult
 from engine.domain.evaluator import ActionEvaluator
+from engine.domain.formula_evaluator import calculate_event_effect
 from engine.utils import generate_fallback_embedding
 import config
 
@@ -256,6 +257,24 @@ class GameEngine:
             target_node_id=neighbor_id,
             edge_type="neutro",
             descricao="Tratado de Não-Agressão com Solária"
+        )
+        self.repo.upsert_periodic_event(
+            event_id="recolhimento_impostos",
+            campaign_id=campaign_id,
+            titulo="Recolhimento de Impostos",
+            intervalo_dias=30,
+            proximo_disparo_dia=30,
+            descricao="Arrecadação periódica de tributos reais baseada na população e no índice de felicidade do reino.",
+            ultimo_disparo_dia=0,
+            efeito={
+                "tipo": "formula",
+                "recurso": "dinheiro",
+                "formula": "(populacao * 0.05) * (felicidade / 100)",
+                "aliquota": 0.05,
+                "descricao_calculo": "5% da população ajustado pela felicidade"
+            },
+            status="ativo",
+            criado_no_turno=1
         )
 
         initial_user_prompt = (
@@ -580,13 +599,34 @@ class GameEngine:
                         )
 
             elif action_type == "create_periodic_event":
-                event_id = payload.get("id") or f"pe_{turn_number}_{str(uuid.uuid4())[:6]}"
+                raw_id = payload.get("id")
                 titulo = payload.get("titulo", "Novo Evento Periódico")
-                descricao = payload.get("descricao", "")
-                intervalo = int(payload.get("intervalo_dias", 30))
-                proximo = int(payload.get("proximo_disparo_dia") or (current_day + intervalo))
-                efeito = payload.get("efeito", {})
-                status_pe = payload.get("status", "ativo")
+                existing_pe = self.repo.get_periodic_events(campaign_id)
+                matched = [e for e in existing_pe if (raw_id and e["id"] == str(raw_id)) or e["titulo"].lower() == titulo.lower() or ("imposto" in titulo.lower() and "imposto" in e["titulo"].lower())]
+
+                if matched:
+                    target = matched[0]
+                    event_id = target["id"]
+                    old_efeito = target.get("efeito", {})
+                    new_efeito = payload.get("efeito", {})
+                    if isinstance(old_efeito, dict) and "formula" in old_efeito and "formula" not in new_efeito:
+                        efeito = {**old_efeito, **new_efeito}
+                    else:
+                        efeito = new_efeito
+                    intervalo = int(payload.get("intervalo_dias", target.get("intervalo_dias", 30)))
+                    proximo = int(payload.get("proximo_disparo_dia") or target.get("proximo_disparo_dia", current_day + intervalo))
+                    descricao = payload.get("descricao", target.get("descricao", ""))
+                    status_pe = payload.get("status", target.get("status", "ativo"))
+                    criado_turno = target.get("criado_no_turno", turn_number)
+                else:
+                    event_id = raw_id or f"pe_{turn_number}_{str(uuid.uuid4())[:6]}"
+                    intervalo = int(payload.get("intervalo_dias", 30))
+                    proximo = int(payload.get("proximo_disparo_dia") or (current_day + intervalo))
+                    descricao = payload.get("descricao", "")
+                    efeito = payload.get("efeito", {})
+                    status_pe = payload.get("status", "ativo")
+                    criado_turno = turn_number
+
                 self.repo.upsert_periodic_event(
                     event_id=event_id,
                     campaign_id=campaign_id,
@@ -597,16 +637,22 @@ class GameEngine:
                     ultimo_disparo_dia=0,
                     efeito=efeito,
                     status=status_pe,
-                    criado_no_turno=turn_number
+                    criado_no_turno=criado_turno
                 )
 
             elif action_type == "update_periodic_event":
                 event_id = payload.get("id") or payload.get("titulo")
                 if event_id:
                     existing_pe = self.repo.get_periodic_events(campaign_id)
-                    matched = [e for e in existing_pe if e["id"] == str(event_id) or e["titulo"] == str(event_id)]
+                    matched = [e for e in existing_pe if e["id"] == str(event_id) or e["titulo"].lower() == str(event_id).lower() or ("imposto" in str(event_id).lower() and "imposto" in e["titulo"].lower())]
                     if matched:
                         target = matched[0]
+                        old_efeito = target.get("efeito", {})
+                        new_efeito = payload.get("efeito", {})
+                        if isinstance(old_efeito, dict) and "formula" in old_efeito and "formula" not in new_efeito:
+                            efeito = {**old_efeito, **new_efeito}
+                        else:
+                            efeito = new_efeito
                         self.repo.upsert_periodic_event(
                             event_id=target["id"],
                             campaign_id=campaign_id,
@@ -615,7 +661,7 @@ class GameEngine:
                             proximo_disparo_dia=int(payload.get("proximo_disparo_dia", target["proximo_disparo_dia"])),
                             descricao=payload.get("descricao", target.get("descricao", "")),
                             ultimo_disparo_dia=int(payload.get("ultimo_disparo_dia", target.get("ultimo_disparo_dia", 0))),
-                            efeito=payload.get("efeito", target.get("efeito", {})),
+                            efeito=efeito,
                             status=payload.get("status", target.get("status", "ativo")),
                             criado_no_turno=target.get("criado_no_turno", turn_number)
                         )
@@ -962,15 +1008,52 @@ class GameEngine:
         except (ValueError, TypeError):
             pop_int = 10000
 
-        if evaluation_result and evaluation_result.delta_dinheiro is not None and latest_ws:
-            final_gold = max(0, latest_ws.get("gold", 5000) + evaluation_result.delta_dinheiro)
-        else:
-            final_gold = int(status_dict.get("dinheiro", 5000))
+        periodic_gold_delta = 0
+        periodic_mil_delta = 0
+        triggered_events_to_process = []
 
-        if evaluation_result and evaluation_result.delta_poder_militar is not None and latest_ws:
-            final_mil = max(0, latest_ws.get("military", 1000) + evaluation_result.delta_poder_militar)
+        if evaluation_result and evaluation_result.eventos_periodicos_disparados:
+            triggered_events_to_process = evaluation_result.eventos_periodicos_disparados
+        elif turn_number > 1 and latest_ws:
+            triggered_events_to_process = self.repo.get_due_periodic_events(campaign_id, current_day)
+
+        if triggered_events_to_process:
+            for ev in triggered_events_to_process:
+                ev_id = ev.get("id")
+                intervalo = max(1, int(ev.get("intervalo_dias", 30)))
+                next_disp = current_day + intervalo
+                calc_res = ev.get("efeito_calculado") or calculate_event_effect(ev.get("efeito", {}), {
+                    "populacao": pop_int,
+                    "felicidade": status_dict.get("felicidade", latest_ws.get("happiness", "70%") if latest_ws else "70%"),
+                    "dinheiro": latest_ws.get("gold", 5000) if latest_ws else 5000,
+                    "poder_militar": latest_ws.get("military", 1000) if latest_ws else 1000,
+                    "dia_atual": current_day
+                })
+                periodic_gold_delta += calc_res.get("dinheiro", 0) + calc_res.get("ouro", 0) + calc_res.get("gold", 0)
+                periodic_mil_delta += calc_res.get("poder_militar", 0) + calc_res.get("military", 0)
+
+                self.repo.upsert_periodic_event(
+                    event_id=ev_id,
+                    campaign_id=campaign_id,
+                    titulo=ev.get("titulo", "Evento Periódico"),
+                    intervalo_dias=intervalo,
+                    proximo_disparo_dia=next_disp,
+                    descricao=ev.get("descricao", ""),
+                    ultimo_disparo_dia=current_day,
+                    efeito=ev.get("efeito", {}),
+                    status=ev.get("status", "ativo"),
+                    criado_no_turno=ev.get("criado_no_turno", 1)
+                )
+
+        if latest_ws:
+            delta_action_gold = evaluation_result.delta_dinheiro if (evaluation_result and evaluation_result.delta_dinheiro is not None) else 0
+            final_gold = max(0, latest_ws.get("gold", 5000) + delta_action_gold + periodic_gold_delta)
+
+            delta_action_mil = evaluation_result.delta_poder_militar if (evaluation_result and evaluation_result.delta_poder_militar is not None) else 0
+            final_mil = max(0, latest_ws.get("military", 1000) + delta_action_mil + periodic_mil_delta)
         else:
-            final_mil = int(status_dict.get("poder_militar", 1000))
+            final_gold = int(status_dict.get("dinheiro", 5000)) + periodic_gold_delta
+            final_mil = int(status_dict.get("poder_militar", 1000)) + periodic_mil_delta
 
         status = KingdomStatus(
             nome_reino=status_dict.get("nome_reino", kingdom_name),
@@ -1000,24 +1083,6 @@ class GameEngine:
             current_day=current_day,
             raw_state_json=response_json
         )
-
-        if evaluation_result and evaluation_result.eventos_periodicos_disparados:
-            for ev in evaluation_result.eventos_periodicos_disparados:
-                ev_id = ev.get("id")
-                intervalo = ev.get("intervalo_dias", 30)
-                next_disp = current_day + intervalo
-                self.repo.upsert_periodic_event(
-                    event_id=ev_id,
-                    campaign_id=campaign_id,
-                    titulo=ev.get("titulo", "Evento Periódico"),
-                    intervalo_dias=intervalo,
-                    proximo_disparo_dia=next_disp,
-                    descricao=ev.get("descricao", ""),
-                    ultimo_disparo_dia=current_day,
-                    efeito=ev.get("efeito", {}),
-                    status=ev.get("status", "ativo"),
-                    criado_no_turno=ev.get("criado_no_turno", 1)
-                )
 
         memory_text = f"Turno {turn_number}: Jogador ordenou '{user_action}'. Consequência: {narrative[:300]}"
         importance = calculate_importance(memory_text)
