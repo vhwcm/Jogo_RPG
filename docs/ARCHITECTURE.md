@@ -1,10 +1,10 @@
-# 🏛️ Visão Geral da Arquitetura do Sistema
+# Visao Geral da Arquitetura do Sistema
 
 O **AI RPG Game** foi construído seguindo princípios de **Clean Architecture** e **Hexagonal Architecture**, desacoplando totalmente a lógica do domínio de jogo, persistência e inferências de IA da camada de apresentação (Web Application).
 
 ---
 
-## 🎯 Diagrama de Componentes
+## Diagrama de Componentes
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -31,7 +31,7 @@ O **AI RPG Game** foi construído seguindo princípios de **Clean Architecture**
 
 ---
 
-## 🧠 Arquitetura de Memória em 4 Camadas
+## Arquitetura de Memoria em 4 Camadas
 
 1. **Memória de Curto Prazo (Short-Term Context Window)**: Retém as últimas 4 a 10 interações diretas do diálogo atual para manter a fluidez imediata do turno.
 2. **Estado Estruturado do Mundo (Structured SQLite State)**: Guarda em tabelas relacionais os valores exatos de ouro, população, poder militar, felicidade, religião, lealdade de personagens e status de quests.
@@ -40,7 +40,7 @@ O **AI RPG Game** foi construído seguindo princípios de **Clean Architecture**
 
 ---
 
-## 🗄️ Esquema do Banco de Dados SQLite3
+## Esquema do Banco de Dados SQLite3
 
 - `campaigns`: Registro de campanhas (`id`, `name`, `summary`, `created_at`, `updated_at`).
 - `world_state`: Histórico de turnos do reino (`campaign_id`, `turn_number`, `kingdom_name`, `ruler_name`, `race`, `gold`, `population`, `military`, `happiness`, `religion`).
@@ -50,7 +50,7 @@ O **AI RPG Game** foi construído seguindo princípios de **Clean Architecture**
 
 ---
 
-## 📊 Preocupações Transversais & Padrões Visuais
+## Preocupacoes Transversais & Padroes Visuais
 
 ### 1. Observabilidade e Logs Estruturados
 Todas as camadas do sistema são instrumentadas para emitir logs estruturados com dados contextuais (`campaign_id`, `turn_number`, `action_type`, `provider`, `duration_ms`), permitindo rastreabilidade completa, monitoramento de saúde de LLMs e diagnóstico de runtime sem suposições. Chaves de API e segredos são estritamente filtrados.
