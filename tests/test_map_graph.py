@@ -382,22 +382,20 @@ def test_place_asset_on_map_and_orbital_distribution(test_engine):
     assert item_unplaced["atributos"]["map_node_id"] is None
 
 def test_api_place_and_unplace_asset_endpoints():
+    from server.app import engine
     client = TestClient(app)
     camp_name = f"Campanha API Ativos Mapa {uuid.uuid4().hex[:6]}"
-    create_resp = client.post("/api/campaigns", json={
-        "campaign_name": camp_name,
-        "ruler_name": "Imperatriz Luna",
-        "kingdom_name": "Lunaria",
-        "race": "Humano",
-        "provider": "mock_fallback"
-    })
-    assert create_resp.status_code == 200
-    all_camps = client.get("/api/campaigns").json()
-    matched = [c for c in all_camps if c.get("name") == camp_name]
+    turn = engine.create_campaign(
+        campaign_name=camp_name,
+        ruler_name="Imperatriz Luna",
+        kingdom_name="Lunaria",
+        race="Humano"
+    )
+    all_camps = engine.list_campaigns()
+    matched = [c for c in all_camps if c.campaign_name == camp_name]
     assert len(matched) > 0
-    cid = matched[0]["id"]
+    cid = matched[0].campaign_id
 
-    from server.app import engine
     engine.apply_actions(cid, [GameAction(
         action_type="add_structure",
         payload={"id": "asset_santuario_api", "nome": "Santuário das Estrelas", "categoria": "santuario"}
