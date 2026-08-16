@@ -384,17 +384,14 @@ def test_place_asset_on_map_and_orbital_distribution(test_engine):
 def test_api_place_and_unplace_asset_endpoints():
     from server.app import engine
     client = TestClient(app)
-    camp_name = f"Campanha API Ativos Mapa {uuid.uuid4().hex[:6]}"
+    cid = f"test_camp_api_{uuid.uuid4().hex[:6]}"
     turn = engine.create_campaign(
-        campaign_name=camp_name,
+        campaign_name="Campanha API Ativos Mapa",
         ruler_name="Imperatriz Luna",
         kingdom_name="Lunaria",
-        race="Humano"
+        race="Humano",
+        campaign_id=cid
     )
-    all_camps = engine.list_campaigns()
-    matched = [c for c in all_camps if c.campaign_name == camp_name]
-    assert len(matched) > 0
-    cid = matched[0].campaign_id
 
     engine.apply_actions(cid, [GameAction(
         action_type="add_structure",
