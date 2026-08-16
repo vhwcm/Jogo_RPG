@@ -1,12 +1,14 @@
 document.addEventListener('DOMContentLoaded', () => {
     let currentCampaignId = null;
     let currentTurnNum = 1;
+    let currentDay = 1;
     let currentRace = "Humano";
 
     const modalNewGame = document.getElementById('modal-new-game');
     const modalCampaigns = document.getElementById('modal-campaigns');
     const modalInventory = document.getElementById('modal-inventory');
     const modalQuests = document.getElementById('modal-quests');
+    const modalEvents = document.getElementById('modal-events');
     const modalAllies = document.getElementById('modal-allies');
 
     const actionForm = document.getElementById('action-form');
@@ -52,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    const inspectorDrawer = document.getElementById('inspector-drawer');
+    const inspectorDrawer = document.getElementById('tactical-inspector') || document.getElementById('inspector-drawer');
     const panelTactical = document.getElementById('panel-tactical');
     if (panelTactical && inspectorDrawer) {
         panelTactical.addEventListener('click', (e) => {
@@ -115,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const details = await resp.json();
                 UI.renderInventory(details.items || []);
                 UI.renderTasks(details.tasks || []);
+                UI.renderEvents(details.periodic_events || [], currentDay);
                 UI.renderAllies(details.allies || []);
                 if (window.TacticalMap && details.map_nodes) {
                     window.TacticalMap.setData(details.map_nodes, details.map_edges || []);
@@ -135,6 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentRace = info.race;
             }
             if (info.status) {
+                currentDay = info.status.dia_atual || 1;
                 UI.updateStatusHUD(info.status, info.turn_number, currentRace);
                 currentTurnNum = info.turn_number;
             }
@@ -255,6 +259,18 @@ document.addEventListener('DOMContentLoaded', () => {
         btnCloseQuests.onclick = () => modalQuests.classList.add('hidden');
     }
 
+    const btnEventsDrawer = document.getElementById('btn-events-drawer');
+    if (btnEventsDrawer) {
+        btnEventsDrawer.onclick = () => {
+            modalEvents.classList.remove('hidden');
+            refreshStateDetails(currentCampaignId);
+        };
+    }
+    const btnCloseEvents = document.getElementById('btn-close-events');
+    if (btnCloseEvents) {
+        btnCloseEvents.onclick = () => modalEvents.classList.add('hidden');
+    }
+
     const btnAlliesDrawer = document.getElementById('btn-allies-drawer');
     if (btnAlliesDrawer) {
         btnAlliesDrawer.onclick = () => {
@@ -338,6 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentCampaignId = camps[0].id;
             localStorage.setItem('rpg_active_campaign_id', currentCampaignId);
             currentTurnNum = 1;
+            currentDay = (data.status_reino && data.status_reino.dia_atual) ? data.status_reino.dia_atual : 1;
 
             UI.updateStatusHUD(data.status_reino, 1, currentRace);
             if (data.clima) {
@@ -419,6 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await resp.json();
             currentTurnNum += 1;
+            currentDay = (data.status_reino && data.status_reino.dia_atual) ? data.status_reino.dia_atual : currentDay;
 
             UI.updateStatusHUD(data.status_reino, currentTurnNum, currentRace);
             if (data.clima) {
@@ -441,6 +459,72 @@ document.addEventListener('DOMContentLoaded', () => {
             UI.appendNarrativeBlock("Falha ao comunicar com os conselheiros do reino.", "ERRO");
         }
     }
+
+    document.addEventListener('click', async (e) => {
+        const placeBtn = e.target.closest('.place-asset-btn');
+        if (placeBtn && currentCampaignId) {
+            const assetId = placeBtn.getAttribute('data-asset-id');
+            if (assetId) {
+                placeBtn.disabled = true;
+                placeBtn.textContent = 'Posicionando...';
+                try {
+                    const resp = await fetch(`/api/campaigns/${currentCampaignId}/assets/${assetId}/place_on_map`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ connect_to_capital: true })
+                    });
+                    if (resp.ok) {
+                        await refreshStateDetails(currentCampaignId);
+                        const tabBtn = document.querySelector('.tab-btn[data-tab="tab-map"]');
+                        if (tabBtn) tabBtn.click();
+                        setTimeout(() => {
+                            if (window.TacticalMap) window.TacticalMap.focusNode(`node_${assetId}`);
+                        }, 250);
+                    }
+                } catch (err) {
+                    console.error('Error placing asset on map:', err);
+                } finally {
+                    placeBtn.disabled = false;
+                }
+            }
+            return;
+        }
+
+        const unplaceBtn = e.target.closest('.unplace-asset-btn');
+        if (unplaceBtn && currentCampaignId) {
+            const assetId = unplaceBtn.getAttribute('data-asset-id');
+            if (assetId) {
+                unplaceBtn.disabled = true;
+                unplaceBtn.textContent = 'Removendo...';
+                try {
+                    const resp = await fetch(`/api/campaigns/${currentCampaignId}/assets/${assetId}/unplace_from_map`, {
+                        method: 'POST'
+                    });
+                    if (resp.ok) {
+                        await refreshStateDetails(currentCampaignId);
+                    }
+                } catch (err) {
+                    console.error('Error unplacing asset from map:', err);
+                } finally {
+                    unplaceBtn.disabled = false;
+                }
+            }
+            return;
+        }
+
+        const focusBtn = e.target.closest('.focus-asset-btn');
+        if (focusBtn) {
+            const nodeId = focusBtn.getAttribute('data-node-id') || `node_${focusBtn.getAttribute('data-asset-id')}`;
+            const tabBtn = document.querySelector('.tab-btn[data-tab="tab-map"]');
+            if (tabBtn) tabBtn.click();
+            const modal = document.getElementById('modal-inventory');
+            if (modal) modal.classList.add('hidden');
+            setTimeout(() => {
+                if (window.TacticalMap) window.TacticalMap.focusNode(nodeId);
+            }, 250);
+            return;
+        }
+    });
 
     const btnAudioToggle = document.getElementById('btn-audio-toggle');
     if (btnAudioToggle) {

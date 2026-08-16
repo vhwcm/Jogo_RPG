@@ -285,3 +285,136 @@ def test_api_state_details_and_turn():
     assert "map_nodes" in data
     assert "map_edges" in data
     assert len(data["map_nodes"]) >= 4
+
+def test_map_node_hierarchy_and_sizes(test_engine):
+    turn = test_engine.create_campaign(
+        campaign_name="Reino Hierárquico",
+        ruler_name="Valerius",
+        kingdom_name="Aethelgard",
+        race="Humano"
+    )
+    cid = test_engine.list_campaigns()[0]["id"]
+    details = test_engine.get_campaign_state_details(cid)
+    nodes = details["map_nodes"]
+
+    capital = next(n for n in nodes if n["id"] == "node_capital")
+    assert capital["size"] == "mega"
+
+    floresta = next(n for n in nodes if n["id"] == "node_floresta_ancestral")
+    assert floresta["size"] == "grande"
+
+    solaria = next(n for n in nodes if n["id"] == "node_reino_vizinho_solaria")
+    assert solaria["size"] == "mega"
+
+def test_place_asset_on_map_and_orbital_distribution(test_engine):
+    turn = test_engine.create_campaign(
+        campaign_name="Reino dos Santuários",
+        ruler_name="Seraphina",
+        kingdom_name="Eldoria",
+        race="Elfo"
+    )
+    cid = test_engine.list_campaigns()[0]["id"]
+
+    actions = [
+        GameAction(
+            action_type="add_structure",
+            payload={
+                "id": "asset_santuario_luz",
+                "nome": "Santuário da Luz Eterna",
+                "categoria": "santuario",
+                "descricao": "Altar sagrado que abençoa as terras reais.",
+                "atributos": {"bênção": "+10% felicidade"}
+            }
+        ),
+        GameAction(
+            action_type="add_kingdom_asset",
+            payload={
+                "id": "asset_estatua_fundador",
+                "nome": "Estátua do Primeiro Rei",
+                "categoria": "estatua",
+                "descricao": "Monumento talhado em mármore puro.",
+                "atributos": {"moral": "+5"}
+            }
+        )
+    ]
+    test_engine.apply_actions(cid, actions, turn_number=2)
+
+    items_before = test_engine.get_campaign_state_details(cid)["items"]
+    santuario_item = next(i for i in items_before if i["id"] == "asset_santuario_luz")
+    assert santuario_item["atributos"]["posicionavel_no_mapa"] is True
+    assert santuario_item["atributos"].get("no_mapa") is not True
+
+    placed_santuario = test_engine.place_asset_on_map(
+        campaign_id=cid,
+        asset_id="asset_santuario_luz",
+        connect_to_capital=True
+    )
+    assert placed_santuario["node_id"] == "node_asset_santuario_luz"
+    assert placed_santuario["size"] == "pequeno"
+    assert placed_santuario["x"] != 0.0 or placed_santuario["y"] != 0.0
+
+    placed_estatua = test_engine.place_asset_on_map(
+        campaign_id=cid,
+        asset_id="asset_estatua_fundador",
+        connect_to_capital=True
+    )
+    assert placed_estatua["node_id"] == "node_asset_estatua_fundador"
+    assert placed_estatua["size"] == "pequeno"
+
+    details_placed = test_engine.get_campaign_state_details(cid)
+    nodes_placed = details_placed["map_nodes"]
+    assert any(n["id"] == "node_asset_santuario_luz" and n["size"] == "pequeno" for n in nodes_placed)
+    assert any(n["id"] == "node_asset_estatua_fundador" and n["size"] == "pequeno" for n in nodes_placed)
+
+    items_placed = details_placed["items"]
+    updated_sant = next(i for i in items_placed if i["id"] == "asset_santuario_luz")
+    assert updated_sant["atributos"]["no_mapa"] is True
+    assert updated_sant["atributos"]["map_node_id"] == "node_asset_santuario_luz"
+
+    unplaced = test_engine.unplace_asset_from_map(cid, "asset_santuario_luz")
+    assert unplaced is True
+
+    details_unplaced = test_engine.get_campaign_state_details(cid)
+    assert not any(n["id"] == "node_asset_santuario_luz" for n in details_unplaced["map_nodes"])
+    item_unplaced = next(i for i in details_unplaced["items"] if i["id"] == "asset_santuario_luz")
+    assert item_unplaced["atributos"]["no_mapa"] is False
+    assert item_unplaced["atributos"]["map_node_id"] is None
+
+def test_api_place_and_unplace_asset_endpoints():
+    client = TestClient(app)
+    create_resp = client.post("/api/campaigns", json={
+        "campaign_name": "Campanha API Ativos Mapa",
+        "ruler_name": "Imperatriz Luna",
+        "kingdom_name": "Lunaria",
+        "race": "Humano",
+        "provider": "mock_fallback"
+    })
+    assert create_resp.status_code == 200
+    all_camps = client.get("/api/campaigns").json()
+    matched = [c for c in all_camps if c.get("name") == "Campanha API Ativos Mapa"]
+    assert len(matched) > 0
+    cid = matched[0]["id"]
+
+    from server.app import engine
+    engine.apply_actions(cid, [GameAction(
+        action_type="add_structure",
+        payload={"id": "asset_santuario_api", "nome": "Santuário das Estrelas", "categoria": "santuario"}
+    )], turn_number=2)
+
+    details = client.get(f"/api/campaigns/{cid}/state-details").json()
+    items = details.get("items", [])
+    assert len(items) > 0
+
+    target_item = items[0]
+    place_resp = client.post(f"/api/campaigns/{cid}/assets/{target_item['id']}/place_on_map", json={
+        "connect_to_capital": True
+    })
+    assert place_resp.status_code == 200
+    res_data = place_resp.json()
+    assert res_data["status"] == "success"
+    assert res_data["result"]["size"] == "pequeno"
+
+    unplace_resp = client.post(f"/api/campaigns/{cid}/assets/{target_item['id']}/unplace_from_map")
+    assert unplace_resp.status_code == 200
+    assert unplace_resp.json()["status"] == "success"
+

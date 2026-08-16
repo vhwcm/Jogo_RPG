@@ -1,7 +1,7 @@
 import uuid
 import math
 import concurrent.futures
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Union, Tuple
 from engine.db.schema import init_db, get_connection
 from engine.db.repository import Repository
 from engine.db.vector_store import VectorStore
@@ -10,7 +10,8 @@ from engine.providers.factory import LLMFactory
 from engine.memory.context_builder import ContextBuilder
 from engine.memory.importance import calculate_importance
 from engine.memory.summarizer import CampaignSummarizer
-from engine.domain.models import KingdomStatus, TurnResponse, CampaignInfo, Item, Task, ImperioAliado, GameAction, MapNode, MapEdge
+from engine.domain.models import KingdomStatus, TurnResponse, CampaignInfo, Item, Task, ImperioAliado, GameAction, MapNode, MapEdge, PeriodicEvent, EvaluationResult
+from engine.domain.evaluator import ActionEvaluator
 from engine.utils import generate_fallback_embedding
 import config
 
@@ -48,133 +49,56 @@ Sua resposta deve ser APENAS um JSON válido seguindo exatamente este esquema:
   },
   "actions": [
     {
-      "action_type": "add_item | remove_item | add_structure | remove_structure | add_kingdom_asset | remove_kingdom_asset | create_task | update_task | add_ally | update_ally | add_map_node | update_map_node | remove_map_node | connect_map_nodes | disconnect_map_nodes",
+      "action_type": "add_item | remove_item | add_structure | remove_structure | add_kingdom_asset | remove_kingdom_asset | create_task | update_task | create_periodic_event | update_periodic_event | remove_periodic_event | add_ally | update_ally | add_map_node | update_map_node | remove_map_node | connect_map_nodes | disconnect_map_nodes",
       "payload": { ... }
     }
   ]
 }
 
 ### SISTEMA DE ACTIONS SUPORTADAS
-Sempre que eventos da história concederem itens, criaturas ou artefatos, ou quando o soberano construir/estabelecer estruturas e postos do reino (ex: posto avançado, santuário, quartel, muralha, mina, monumento), ou iniciar/atualizar tarefas de longo prazo, ou firmar/mudar relações diplomáticas, ou descobrir novos territórios/biomas no mapa, ou mobilizar tropas/rotas no mapa tático, emita itens na lista "actions":
+Sempre que eventos da história concederem itens, criaturas ou artefatos, ou quando o soberano construir/estabelecer estruturas e postos do reino, ou iniciar/atualizar tarefas de longo prazo, ou criar/atualizar eventos periódicos e tributos recorrentes, ou firmar/mudar relações diplomáticas, ou descobrir novos territórios/biomas no mapa, emita itens na lista "actions":
 1. add_item / add_structure / add_kingdom_asset:
    payload: {"id": "id_unico_str", "nome": "Nome do Item/Estrutura/Criatura", "categoria": "estrutura|santuario|posto_avancado|fortificacao|monumento|criatura|artefato|recurso|equipamento|outro", "descricao": "...", "atributos": {"chave": "valor"}}
 2. remove_item / remove_structure / remove_kingdom_asset:
    payload: {"id": "id_do_item_ou_estrutura"}
 3. create_task:
-   payload: {"id": "id_da_task", "titulo": "Título da Missão", "descricao": "...", "status": "em_andamento|concluida|falhou|cancelada", "progresso": 0_a_100, "duracao_estimada": "3 turnos", "objetivo_esperado": "...", "is_incidente_dinamico": true_ou_false}
+   payload: {"id": "id_da_task", "titulo": "Título da Missão", "descricao": "...", "status": "em_andamento|concluida|falhou|cancelada", "progresso": 0_a_100, "dia_inicio": 1, "dias_estimados": 30, "objetivo_esperado": "...", "is_incidente_dinamico": true_ou_false}
 4. update_task:
    payload: {"id": "id_da_task", "status": "em_andamento|concluida|falhou|cancelada", "progresso": 0_a_100, "descricao": "..."}
-5. add_ally:
-   payload: {"id": "id_do_aliado", "nome": "Nome do Reino", "rei": "Nome do Soberano", "populacao": 25000, "poder_militar": 3000, "relacionamento": 50_a_100, "status_diplomatico": "hostil|neutro|amigavel|aliado|vassalo", "historico_notas": "..."}
-6. update_ally:
-   payload: {"id": "id_do_aliado", "relacionamento": -100_a_100, "status_diplomatico": "...", "historico_notas": "..."}
-7. add_map_node:
+5. create_periodic_event:
+   payload: {"id": "id_do_evento", "titulo": "Tributo do Império Vizinho", "descricao": "...", "intervalo_dias": 45, "proximo_disparo_dia": 45, "efeito": {"dinheiro": 500}, "status": "ativo"}
+6. update_periodic_event:
+   payload: {"id": "id_do_evento", "status": "ativo|pausado|cancelado", "proximo_disparo_dia": 90}
+7. remove_periodic_event:
+   payload: {"id": "id_do_evento"}
+8. add_ally:
+   payload: {"id": "id_do_aliado", "nome": "Nome do Reino", "rei": "Nome do Soberano", "raca": "Humano|Elfo|Anão|Orc|Centauro|Demônio|Djinn|Dragão|Elemental|Fauno|Gnomo|Goblin|Leprechaun|Mago|Morto Vivo|Rinoceronte|Sereia|Trol|Vampiro", "populacao": 25000, "poder_militar": 3000, "relacionamento": -100_a_100, "status_diplomatico": "hostil|neutro|amigavel|aliado|vassalo", "historico_notas": "..."}
+9. update_ally:
+   payload: {"id": "id_do_aliado", "raca": "...", "relacionamento": -100_a_100, "status_diplomatico": "...", "historico_notas": "..."}
+10. add_map_node:
    payload: {"id": "id_do_node", "label": "Nome do Ponto no Mapa", "node_type": "bioma|tropa|reino_vizinho|estrutura|santuario|fortificacao|mina|porto|ruina|vila", "emoji": "🌲|⚔️|👑|🏛️|✨|🛡️|⛏️|⚓|🏚️|🌾", "status": "ativo|descoberto|hostil|em_marcha", "metadata": {"tropas": 150, "dono": "Reino", "perigo": "Baixo"}, "connect_to": "id_do_node_pai_opcional", "edge_type": "estrada|fronteira|rota"}
-8. update_map_node:
+11. update_map_node:
    payload: {"id": "id_do_node", "status": "...", "metadata": { ... }}
-9. remove_map_node:
+12. remove_map_node:
    payload: {"id": "id_do_node"}
-10. connect_map_nodes:
+13. connect_map_nodes:
    payload: {"source_node_id": "id_origem", "target_node_id": "id_destino", "edge_type": "estrada|fronteira|rota", "descricao": "..."}
-11. disconnect_map_nodes:
+14. disconnect_map_nodes:
    payload: {"source_node_id": "id_origem", "target_node_id": "id_destino"}
 
-### EXEMPLOS DE FORMATO DE RESPOSTA (SMALL SHOTS / FEW-SHOT)
-Exemplo 1 (Turno Inicial - Escolha de Religião):
-{
-  "aventura": "Saudações, Vossa Majestade. O Reino de Aurelia foi fundado com glória, porém o povo aguarda vossa palavra sobre a fé que guiará nossas terras.\\n\\nComo deseja definir o destino espiritual de Aurelia?\\n1. Declarar o Reino como um Estado Laico pautado na Ciência e na Razão.\\n2. Adotar a Fé dos Antigos Deuses da Natureza como religião oficial.\\n3. Instituir o Culto da Chama Sagrada como a verdadeira e única fé do reino.",
-  "clima": "desenvolvimento",
-  "opcoes": [
-    {
-      "texto": "1. Declarar o Reino como um Estado Laico pautado na Ciência e na Razão.",
-      "impacto": { "dinheiro": 0, "poder_militar": 0 }
-    },
-    {
-      "texto": "2. Adotar a Fé dos Antigos Deuses da Natureza como religião oficial.",
-      "impacto": { "dinheiro": 0, "poder_militar": 0 }
-    },
-    {
-      "texto": "3. Instituir o Culto da Chama Sagrada como a verdadeira e única fé do reino.",
-      "impacto": { "dinheiro": 0, "poder_militar": 0 }
-    }
-  ],
-  "status_reino": {
-    "nome_reino": "Aurelia",
-    "imperador": "Arthur",
-    "dinheiro": 5000,
-    "populacao": 10000,
-    "religião": "Nenhuma",
-    "poder_militar": 1000,
-    "felicidade": "70%"
-  },
-  "actions": []
-}
-
-Exemplo 2 (Turno com Recompensas, Ações e Atualização de Mapa):
-{
-  "aventura": "Vossos batedores retornaram da expedição ao leste e mapearam a misteriosa Floresta dos Sussurros, além de despacharem uma guarnição militar para patrulhar a fronteira.\\n\\nQual vossa próxima ordem?\\n1. Estabelecer um posto avançado de observação na floresta.\\n2. Expandir o comércio com as vilas locais.\\n3. Recuar as tropas para a capital.",
-  "clima": "aventura",
-  "opcoes": [
-    {
-      "texto": "1. Estabelecer um posto avançado de observação na floresta.",
-      "impacto": { "dinheiro": -400, "poder_militar": 100 }
-    },
-    {
-      "texto": "2. Expandir o comércio com as vilas locais.",
-      "impacto": { "dinheiro": 250, "poder_militar": 0 }
-    },
-    {
-      "texto": "3. Recuar as tropas para a capital.",
-      "impacto": { "dinheiro": 0, "poder_militar": 0 }
-    }
-  ],
-  "status_reino": {
-    "nome_reino": "Aurelia",
-    "imperador": "Arthur",
-    "dinheiro": 4600,
-    "populacao": 10100,
-    "religião": "Estado Laico",
-    "poder_militar": 1100,
-    "felicidade": "75%"
-  },
-  "actions": [
-    {
-      "action_type": "add_map_node",
-      "payload": {
-        "id": "node_floresta_sussurros",
-        "label": "Floresta dos Sussurros",
-        "node_type": "bioma",
-        "emoji": "🌲",
-        "status": "descoberto",
-        "metadata": { "perigo": "Médio", "recursos": "Madeira Rara" },
-        "connect_to": "node_capital",
-        "edge_type": "estrada"
-      }
-    },
-    {
-      "action_type": "add_map_node",
-      "payload": {
-        "id": "node_patrulha_leste",
-        "label": "1ª Legião em Patrulha",
-        "node_type": "tropa",
-        "emoji": "⚔️",
-        "status": "em_marcha",
-        "metadata": { "tropas": 200, "comandante": "Capitão Gareth" },
-        "connect_to": "node_floresta_sussurros",
-        "edge_type": "rota"
-      }
-    }
-  ]
-}
-
-### REGRAS DE JOGO
+### REGRAS CRÍTICAS DE JOGO
 1. **Religião Inicial:** Todo reino SEMPRE começa SEM religião oficial ("Nenhuma"). No Turno 1 (início da campanha), a PRIMEIRA pergunta/decisão apresentada ao Imperador DEVE ser obrigatoriamente a escolha ou definição da religião/doutrina do reino.
-2. **Consequências Lógicas:** As escolhas do usuário devem alterar os números no próximo turno.
-3. **Clima Musical:** Defina o campo 'clima' dinamicamente conforme a atmosfera da cena.
-4. **Tom Majestic:** Use linguagem formal e imersiva ("Vossa Majestade", "Sua Graça").
-5. **Sem Emojis no Texto:** Mantenha a narrativa literária, elegante e imersiva. NÃO inclua emojis no texto narrativo.
-6. **Opções e Prévias OBRIGATÓRIAS:** Você DEVE sempre incluir o campo 'opcoes' como uma lista com exatamente 3 objetos. Cada objeto possui 'texto' e 'impacto' com 'dinheiro' (inteiro indicando variação ex: -500, 200 ou null se incerto) e 'poder_militar' (inteiro indicando variação ex: 200, -100 ou null se incerto em combates).
-7. **Actions Modulares:** Emita ações na chave 'actions' quando itens forem obtidos/perdidos, missões iniciadas/atualizadas, aliados adicionados/modificados ou elementos do mapa forem descobertos/alterados.
+2. **Respeito aos Status do Árbitro:** Os deltas de dinheiro e poder militar calculados pelo árbitro de regras DEVEM ser respeitados no status_reino.
+3. **Não-Imediatismo de Quests e Construções:** NUNCA conclua tarefas ou construções de longo prazo no mesmo turno em que foram iniciadas. Narre a partida das tropas, o início da escavação ou a preparação dos operários, cadastrando a task com o prazo estimado em dias.
+4. **Clima Musical:** Defina o campo 'clima' dinamicamente conforme a atmosfera da cena.
+5. **Tom Majestic:** Use linguagem formal e imersiva ("Vossa Majestade", "Sua Graça").
+6. **Sem Emojis no Texto:** Mantenha a narrativa literária, elegante e imersiva. NÃO inclua emojis no texto narrativo.
+7. **Opções e Prévias OBRIGATÓRIAS:** Você DEVE sempre incluir o campo 'opcoes' como uma lista com exatamente 3 objetos. Cada objeto possui 'texto' e 'impacto' com 'dinheiro' e 'poder_militar'.
+8. **Actions Modulares:** Emita ações na chave 'actions' quando itens forem obtidos/perdidos, missões iniciadas/atualizadas, eventos periódicos configurados ou elementos do mapa forem descobertos/alterados.
+9. **Sistema de Raças & Criação de Novos Impérios Inimigos / Vizinhos:**
+   - O universo do jogo possui 19 raças canônicas: Humano, Elfo, Anão, Orc, Centauro, Demônio, Djinn, Dragão, Elemental, Fauno, Gnomo, Goblin, Leprechaun, Mago, Morto Vivo, Rinoceronte, Sereia, Trol, Vampiro.
+   - O reino do jogador possui sua raça informada no contexto. Respeite suas características e cultura.
+   - Ao introduzir, gerar ou interagir com um NOVO império inimigo, reino rival, vizinho ou facção externa (na narrativa ou via action 'add_ally'), você DEVE OBRIGATORIAMENTE escolher uma das raças canônicas disponíveis e preencher o campo 'raca' no payload da action 'add_ally'.
 """
 
 class GameEngine:
@@ -183,11 +107,26 @@ class GameEngine:
         self.conn = init_db(self.db_path)
         self.repo = Repository(self.conn)
         self.vector_store = VectorStore(self.conn)
-        self.provider = LLMFactory.get_provider(provider_name)
-        self.context_builder = ContextBuilder(self.repo, self.vector_store, self.provider)
-        self.summarizer = CampaignSummarizer(self.provider)
+        self._provider = LLMFactory.get_provider(provider_name)
+        self.evaluator = ActionEvaluator(self._provider)
+        self.context_builder = ContextBuilder(self.repo, self.vector_store, self._provider)
+        self.summarizer = CampaignSummarizer(self._provider)
         self.short_term_memories: Dict[str, List[Dict[str, str]]] = {}
         self._bg_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+
+    @property
+    def provider(self) -> BaseLLMProvider:
+        return self._provider
+
+    @provider.setter
+    def provider(self, val: BaseLLMProvider):
+        self._provider = val
+        if hasattr(self, "evaluator") and self.evaluator:
+            self.evaluator.provider = val
+        if hasattr(self, "context_builder") and self.context_builder:
+            self.context_builder.provider = val
+        if hasattr(self, "summarizer") and self.summarizer:
+            self.summarizer.provider = val
 
     def _get_short_term_memory(self, campaign_id: str) -> List[Dict[str, str]]:
         if campaign_id not in self.short_term_memories:
@@ -223,6 +162,7 @@ class GameEngine:
             x=0.0,
             y=0.0,
             status="ativo",
+            size="mega",
             metadata={"dono": kingdom_name, "tipo": "Capital", "tropas": 500, "perigo": "Nenhum"}
         )
         self.repo.upsert_map_node(
@@ -234,6 +174,7 @@ class GameEngine:
             x=0.0,
             y=-180.0,
             status="descoberto",
+            size="grande",
             metadata={"tipo": "Floresta", "perigo": "Baixo", "recursos": "Madeira e Ervas"}
         )
         self.repo.upsert_map_node(
@@ -245,6 +186,7 @@ class GameEngine:
             x=-190.0,
             y=110.0,
             status="descoberto",
+            size="grande",
             metadata={"tipo": "Montanhas", "perigo": "Médio", "recursos": "Minério de Ferro"}
         )
         self.repo.upsert_map_node(
@@ -256,6 +198,7 @@ class GameEngine:
             x=190.0,
             y=110.0,
             status="descoberto",
+            size="grande",
             metadata={"tipo": "Planície Fértil", "perigo": "Nenhum", "recursos": "Alimento"}
         )
         self.repo.upsert_map_edge(
@@ -281,6 +224,36 @@ class GameEngine:
             target_node_id=plains_id,
             edge_type="estrada",
             descricao="Rota Comercial Agrícola"
+        )
+        neighbor_id = "node_reino_vizinho_solaria"
+        self.repo.upsert_map_node(
+            node_id=neighbor_id,
+            campaign_id=campaign_id,
+            label="Reino de Solária",
+            node_type="reino_vizinho",
+            emoji="👑",
+            x=240.0,
+            y=-140.0,
+            status="ativo",
+            size="mega",
+            metadata={
+                "rei": "Rainha Elis",
+                "raca": "Elfo",
+                "populacao": "25.000",
+                "poder_militar": "2.500",
+                "relacionamento": 50,
+                "status_diplomatico": "neutro",
+                "dono": "Reino de Solária",
+                "detalhes": "Império Élfico vizinho com forte tradição diplomática e comercial."
+            }
+        )
+        self.repo.upsert_map_edge(
+            edge_id="edge_cap_solaria",
+            campaign_id=campaign_id,
+            source_node_id=cap_id,
+            target_node_id=neighbor_id,
+            edge_type="neutro",
+            descricao="Tratado de Não-Agressão com Solária"
         )
 
         initial_user_prompt = (
@@ -319,8 +292,23 @@ class GameEngine:
         race = latest_state["race"]
 
         st_memory = self._get_short_term_memory(campaign_id)
+        previous_opcoes = latest_state.get("raw_state", {}).get("opcoes", [])
+        if not previous_opcoes:
+            previous_opcoes = self._extract_opcoes(latest_state.get("raw_state", {}), latest_state.get("raw_state", {}).get("aventura", ""))
 
-        context = self.context_builder.build_prompt_context(campaign_id, player_action, st_memory)
+        active_tasks = self.repo.get_campaign_tasks(campaign_id)
+        active_periodic = self.repo.get_periodic_events(campaign_id)
+
+        evaluation = self.evaluator.evaluate_action(
+            campaign_id=campaign_id,
+            action_text=player_action,
+            previous_opcoes=previous_opcoes,
+            current_world_state=latest_state,
+            active_tasks=active_tasks,
+            periodic_events=active_periodic
+        )
+
+        context = self.context_builder.build_prompt_context(campaign_id, player_action, st_memory, evaluation)
 
         response_json = self.provider.generate_json(
             prompt=context,
@@ -335,11 +323,76 @@ class GameEngine:
             kingdom_name=kingdom_name,
             race=race,
             user_action=player_action,
-            response_json=response_json
+            response_json=response_json,
+            evaluation_result=evaluation
         )
         return turn_resp
 
-    def apply_actions(self, campaign_id: str, actions: List[GameAction], turn_number: int):
+    def _infer_node_size(self, node_type: str, explicit_size: Optional[str] = None) -> str:
+        if explicit_size and str(explicit_size).lower() in ["mega", "grande", "medio", "pequeno", "micro"]:
+            return str(explicit_size).lower()
+        nt = (node_type or "estrutura").lower()
+        if nt in ["capital", "reino_vizinho", "imperio", "reino"]:
+            return "mega"
+        if nt in ["fortificacao", "exercito", "bioma", "floresta", "montanha", "cidade", "cidadela"]:
+            return "grande"
+        if nt in ["santuario", "estatua", "obra", "monumento", "totem", "altar", "ruina", "caverna", "rumor", "marco"]:
+            return "pequeno"
+        return "medio"
+
+    def _is_placeable_asset(self, categoria: str, nome: str = "") -> bool:
+        cat = (categoria or "").lower()
+        nom = (nome or "").lower()
+        placeable_cats = {
+            "estrutura", "santuario", "obra", "monumento", "estatua",
+            "fortificacao", "posto_avancado", "mina", "porto", "vila",
+            "templo", "torre", "altar", "ruina", "fazenda", "quartel"
+        }
+        if cat in placeable_cats:
+            return True
+        keywords = [
+            "santuario", "santuário", "estátua", "estatua", "obra",
+            "monumento", "torre", "templo", "mina", "porto", "posto",
+            "forte", "fortaleza", "altar", "totem", "fazenda", "oficina",
+            "castelo", "muralha", "quarte", "cidadela"
+        ]
+        return any(k in nom for k in keywords)
+
+    def _calculate_orbital_position(self, campaign_id: str, node_type: str, category: str = "") -> Tuple[float, float]:
+        existing_nodes = self.repo.get_map_nodes(campaign_id)
+        nt = (node_type or category or "estrutura").lower()
+        is_orbital = nt in ["santuario", "estatua", "obra", "monumento", "totem", "altar", "templo", "posto_avancado", "torre"]
+        
+        if is_orbital:
+            orbital_nodes = [
+                n for n in existing_nodes 
+                if n.get("id") != "node_capital" and math.hypot(float(n.get("x", 0.0)), float(n.get("y", 0.0))) <= 210.0
+            ]
+            idx = len(orbital_nodes)
+            if idx < 6:
+                radius = 95.0
+                slots = 6
+                angle = (idx * (2 * math.pi / slots)) + 0.25
+            elif idx < 14:
+                radius = 140.0
+                slots = 8
+                angle = ((idx - 6) * (2 * math.pi / slots)) + 0.45
+            else:
+                radius = 185.0
+                slots = 12
+                angle = ((idx - 14) * (2 * math.pi / slots)) + 0.15
+            x = round(radius * math.cos(angle), 1)
+            y = round(radius * math.sin(angle), 1)
+            return float(x), float(y)
+        else:
+            count = len(existing_nodes)
+            angle = (count * 0.897) + 0.3
+            radius = 160.0 + ((count // 6) * 110.0)
+            x = round(radius * math.cos(angle), 1)
+            y = round(radius * math.sin(angle), 1)
+            return float(x), float(y)
+
+    def apply_actions(self, campaign_id: str, actions: List[GameAction], turn_number: int, current_day: int = 1):
         for act in actions:
             action_type = act.action_type
             payload = act.payload or {}
@@ -351,7 +404,60 @@ class GameEngine:
                 categoria = payload.get("categoria", default_cat)
                 descricao = payload.get("descricao", "")
                 atributos = payload.get("atributos", {})
+                if not isinstance(atributos, dict):
+                    atributos = {}
+
+                is_placeable = bool(payload.get("posicionavel_no_mapa", False)) or bool(atributos.get("posicionavel_no_mapa", False)) or self._is_placeable_asset(categoria, nome)
+                atributos["posicionavel_no_mapa"] = is_placeable
+                if "tamanho_no" not in atributos:
+                    node_type_infer = categoria if categoria in ["santuario", "fortificacao", "estrutura", "monumento", "estatua"] else "estrutura"
+                    atributos["tamanho_no"] = self._infer_node_size(node_type_infer, payload.get("tamanho_no") or payload.get("size"))
+
                 adquirido_no_turno = payload.get("adquirido_no_turno", turn_number)
+
+                should_place = bool(payload.get("posicionar_no_mapa", False)) or (payload.get("x") is not None and payload.get("y") is not None)
+                if should_place:
+                    node_id = f"node_{item_id}"
+                    node_type = payload.get("node_type", categoria if categoria in ["santuario", "fortificacao", "monumento", "estatua", "mina", "porto", "vila"] else "estrutura")
+                    node_size = atributos.get("tamanho_no", "medio")
+                    default_emojis = {
+                        "capital": "🏰", "bioma": "🌲", "floresta": "🌲", "montanha": "⛰️",
+                        "mina": "⛏️", "vila": "🌾", "fazenda": "🌾", "tropa": "⚔️",
+                        "exercito": "⚔️", "patrulha": "🛡️", "reino_vizinho": "👑", "aliado": "👑",
+                        "estrutura": "🏛️", "fortificacao": "🛡️", "posto_avancado": "🏹",
+                        "santuario": "✨", "templo": "⛪", "porto": "⚓", "mar": "🌊",
+                        "ruina": "🏚️", "caverna": "🕳️", "monumento": "🗿", "estatua": "🗿"
+                    }
+                    emoji = payload.get("emoji") or default_emojis.get(node_type.lower(), "🏛️")
+                    px = payload.get("x")
+                    py = payload.get("y")
+                    if px is None or py is None:
+                        px, py = self._calculate_orbital_position(campaign_id, node_type, categoria)
+                    
+                    self.repo.upsert_map_node(
+                        node_id=node_id,
+                        campaign_id=campaign_id,
+                        label=nome,
+                        node_type=node_type,
+                        emoji=emoji,
+                        x=float(px),
+                        y=float(py),
+                        status="ativo",
+                        size=node_size,
+                        metadata={"asset_id": item_id, "categoria": categoria, "dono": "Reino"}
+                    )
+                    if payload.get("connect_to_capital", True):
+                        self.repo.upsert_map_edge(
+                            edge_id=f"edge_cap_{node_id}",
+                            campaign_id=campaign_id,
+                            source_node_id="node_capital",
+                            target_node_id=node_id,
+                            edge_type="rota",
+                            descricao=f"Acesso a {nome}"
+                        )
+                    atributos["no_mapa"] = True
+                    atributos["map_node_id"] = node_id
+
                 self.repo.upsert_campaign_item(
                     item_id=item_id,
                     campaign_id=campaign_id,
@@ -365,6 +471,12 @@ class GameEngine:
             elif action_type in ["remove_item", "remove_structure", "remove_kingdom_asset"]:
                 item_id = payload.get("id") or payload.get("nome")
                 if item_id:
+                    items = self.repo.get_campaign_items(campaign_id)
+                    matched = [i for i in items if i["id"] == str(item_id) or i["nome"] == str(item_id)]
+                    if matched:
+                        node_id = matched[0].get("atributos", {}).get("map_node_id")
+                        if node_id:
+                            self.repo.delete_map_node(node_id, campaign_id)
                     self.repo.delete_campaign_item(str(item_id), campaign_id)
 
             elif action_type == "create_task":
@@ -372,10 +484,12 @@ class GameEngine:
                 titulo = payload.get("titulo", "Nova Tarefa")
                 descricao = payload.get("descricao", "")
                 status = payload.get("status", "em_andamento")
-                progresso = payload.get("progresso")
+                progresso = payload.get("progresso", 0)
                 duracao_estimada = payload.get("duracao_estimada")
                 objetivo_esperado = payload.get("objetivo_esperado")
                 is_incidente = payload.get("is_incidente_dinamico", False) or payload.get("is_incidente", False)
+                dia_inicio = payload.get("dia_inicio") or current_day
+                dias_estimados = payload.get("dias_estimados") or 0
                 criada_no_turno = payload.get("criada_no_turno", turn_number)
                 self.repo.upsert_campaign_task(
                     task_id=task_id,
@@ -387,6 +501,8 @@ class GameEngine:
                     duracao_estimada=duracao_estimada,
                     objetivo_esperado=objetivo_esperado,
                     is_incidente=is_incidente,
+                    dia_inicio=dia_inicio,
+                    dias_estimados=dias_estimados,
                     criada_no_turno=criada_no_turno
                 )
 
@@ -407,13 +523,62 @@ class GameEngine:
                             duracao_estimada=payload.get("duracao_estimada", target.get("duracao_estimada")),
                             objetivo_esperado=payload.get("objetivo_esperado", target.get("objetivo_esperado")),
                             is_incidente=payload.get("is_incidente_dinamico", target.get("is_incidente_dinamico", False)),
+                            dia_inicio=payload.get("dia_inicio", target.get("dia_inicio", 1)),
+                            dias_estimados=payload.get("dias_estimados", target.get("dias_estimados", 0)),
                             criada_no_turno=target.get("criada_no_turno", turn_number)
                         )
+
+            elif action_type == "create_periodic_event":
+                event_id = payload.get("id") or f"pe_{turn_number}_{str(uuid.uuid4())[:6]}"
+                titulo = payload.get("titulo", "Novo Evento Periódico")
+                descricao = payload.get("descricao", "")
+                intervalo = int(payload.get("intervalo_dias", 30))
+                proximo = int(payload.get("proximo_disparo_dia") or (current_day + intervalo))
+                efeito = payload.get("efeito", {})
+                status_pe = payload.get("status", "ativo")
+                self.repo.upsert_periodic_event(
+                    event_id=event_id,
+                    campaign_id=campaign_id,
+                    titulo=titulo,
+                    intervalo_dias=intervalo,
+                    proximo_disparo_dia=proximo,
+                    descricao=descricao,
+                    ultimo_disparo_dia=0,
+                    efeito=efeito,
+                    status=status_pe,
+                    criado_no_turno=turn_number
+                )
+
+            elif action_type == "update_periodic_event":
+                event_id = payload.get("id") or payload.get("titulo")
+                if event_id:
+                    existing_pe = self.repo.get_periodic_events(campaign_id)
+                    matched = [e for e in existing_pe if e["id"] == str(event_id) or e["titulo"] == str(event_id)]
+                    if matched:
+                        target = matched[0]
+                        self.repo.upsert_periodic_event(
+                            event_id=target["id"],
+                            campaign_id=campaign_id,
+                            titulo=payload.get("titulo", target["titulo"]),
+                            intervalo_dias=int(payload.get("intervalo_dias", target["intervalo_dias"])),
+                            proximo_disparo_dia=int(payload.get("proximo_disparo_dia", target["proximo_disparo_dia"])),
+                            descricao=payload.get("descricao", target.get("descricao", "")),
+                            ultimo_disparo_dia=int(payload.get("ultimo_disparo_dia", target.get("ultimo_disparo_dia", 0))),
+                            efeito=payload.get("efeito", target.get("efeito", {})),
+                            status=payload.get("status", target.get("status", "ativo")),
+                            criado_no_turno=target.get("criado_no_turno", turn_number)
+                        )
+
+            elif action_type in ["remove_periodic_event", "delete_periodic_event"]:
+                event_id = payload.get("id") or payload.get("titulo")
+                if event_id:
+                    self.repo.delete_periodic_event(str(event_id), campaign_id)
 
             elif action_type == "add_ally":
                 ally_id = payload.get("id") or f"ally_{turn_number}_{str(uuid.uuid4())[:6]}"
                 nome = payload.get("nome", "Reino Desconhecido")
                 rei = payload.get("rei", "Desconhecido")
+                raca = payload.get("raca") or payload.get("race", "Humano")
                 populacao = payload.get("populacao", "10000")
                 poder_militar = payload.get("poder_militar", "1000")
                 relacionamento = payload.get("relacionamento", 50)
@@ -424,11 +589,47 @@ class GameEngine:
                     campaign_id=campaign_id,
                     nome=nome,
                     rei=rei,
+                    raca=raca,
                     populacao=populacao,
                     poder_militar=poder_militar,
                     relacionamento=relacionamento,
                     status_diplomatico=status_diplomatico,
                     historico_notas=historico_notas
+                )
+                ally_node_id = f"node_{ally_id}"
+                edge_map = {"aliado": "alianca", "amigavel": "alianca", "neutro": "neutro", "tensao": "tensao", "hostil": "guerra", "vassalo": "alianca"}
+                edge_type = edge_map.get(str(status_diplomatico).lower(), "neutro")
+                all_nodes = self.repo.get_map_nodes(campaign_id)
+                angle = (len(all_nodes) * 1.3) % 6.28
+                node_x = float(payload.get("x", math.cos(angle) * 260.0))
+                node_y = float(payload.get("y", math.sin(angle) * 260.0))
+                self.repo.upsert_map_node(
+                    node_id=ally_node_id,
+                    campaign_id=campaign_id,
+                    label=nome,
+                    node_type="reino_vizinho",
+                    emoji="👑",
+                    x=node_x,
+                    y=node_y,
+                    status="ativo",
+                    metadata={
+                        "rei": rei,
+                        "raca": raca,
+                        "populacao": populacao,
+                        "poder_militar": poder_militar,
+                        "relacionamento": relacionamento,
+                        "status_diplomatico": status_diplomatico,
+                        "dono": nome,
+                        "detalhes": historico_notas or f"Reino governado por {rei} ({raca})"
+                    }
+                )
+                self.repo.upsert_map_edge(
+                    edge_id=f"edge_cap_{ally_node_id}",
+                    campaign_id=campaign_id,
+                    source_node_id="node_capital",
+                    target_node_id=ally_node_id,
+                    edge_type=edge_type,
+                    descricao=f"Relação Diplomática com {nome}"
                 )
 
             elif action_type == "update_ally":
@@ -438,22 +639,68 @@ class GameEngine:
                     matched = [a for a in existing_allies if a["id"] == str(ally_id) or a["nome"] == str(ally_id)]
                     if matched:
                         target = matched[0]
+                        new_rel = payload.get("relacionamento", target.get("relacionamento", 50))
+                        new_stat = payload.get("status_diplomatico", target.get("status_diplomatico", "neutro"))
+                        new_raca = payload.get("raca") or payload.get("race") or target.get("raca", "Humano")
+                        new_rei = payload.get("rei", target["rei"])
+                        new_pop = payload.get("populacao", target.get("populacao", "10000"))
+                        new_mil = payload.get("poder_militar", target.get("poder_militar", "1000"))
+                        new_hist = payload.get("historico_notas", target.get("historico_notas"))
+                        new_nome = payload.get("nome", target["nome"])
                         self.repo.upsert_campaign_ally(
                             ally_id=target["id"],
                             campaign_id=campaign_id,
-                            nome=payload.get("nome", target["nome"]),
-                            rei=payload.get("rei", target["rei"]),
-                            populacao=payload.get("populacao", target.get("populacao", "10000")),
-                            poder_militar=payload.get("poder_militar", target.get("poder_militar", "1000")),
-                            relacionamento=payload.get("relacionamento", target.get("relacionamento", 50)),
-                            status_diplomatico=payload.get("status_diplomatico", target.get("status_diplomatico", "neutro")),
-                            historico_notas=payload.get("historico_notas", target.get("historico_notas"))
+                            nome=new_nome,
+                            rei=new_rei,
+                            raca=new_raca,
+                            populacao=new_pop,
+                            poder_militar=new_mil,
+                            relacionamento=new_rel,
+                            status_diplomatico=new_stat,
+                            historico_notas=new_hist
                         )
+                        ally_node_id = f"node_{target['id']}"
+                        existing_nodes = self.repo.get_map_nodes(campaign_id)
+                        matching_node = next((n for n in existing_nodes if n["id"] == ally_node_id or n["label"] == target["nome"]), None)
+                        if matching_node:
+                            cur_meta = matching_node.get("metadata", {})
+                            cur_meta.update({
+                                "rei": new_rei,
+                                "raca": new_raca,
+                                "populacao": new_pop,
+                                "poder_militar": new_mil,
+                                "relacionamento": new_rel,
+                                "status_diplomatico": new_stat,
+                                "dono": new_nome,
+                                "detalhes": new_hist or cur_meta.get("detalhes", "")
+                            })
+                            self.repo.upsert_map_node(
+                                node_id=matching_node["id"],
+                                campaign_id=campaign_id,
+                                label=new_nome,
+                                node_type="reino_vizinho",
+                                emoji="👑",
+                                x=matching_node.get("x", 240.0),
+                                y=matching_node.get("y", -140.0),
+                                status=matching_node.get("status", "ativo"),
+                                metadata=cur_meta
+                            )
+                            edge_map = {"aliado": "alianca", "amigavel": "alianca", "neutro": "neutro", "tensao": "tensao", "hostil": "guerra", "vassalo": "alianca"}
+                            new_edge_type = edge_map.get(str(new_stat).lower(), "neutro")
+                            self.repo.upsert_map_edge(
+                                edge_id=f"edge_cap_{matching_node['id']}",
+                                campaign_id=campaign_id,
+                                source_node_id="node_capital",
+                                target_node_id=matching_node["id"],
+                                edge_type=new_edge_type,
+                                descricao=f"Relação Diplomática com {new_nome}"
+                            )
 
             elif action_type == "add_map_node":
                 node_id = payload.get("id") or f"node_{turn_number}_{str(uuid.uuid4())[:6]}"
                 label = payload.get("label") or payload.get("nome", "Ponto Estratégico")
                 node_type = payload.get("node_type", "estrutura")
+                node_size = self._infer_node_size(node_type, payload.get("size") or payload.get("tamanho_no"))
                 
                 default_emojis = {
                     "capital": "🏰", "bioma": "🌲", "floresta": "🌲", "montanha": "⛰️",
@@ -461,25 +708,20 @@ class GameEngine:
                     "exercito": "⚔️", "patrulha": "🛡️", "reino_vizinho": "👑", "aliado": "👑",
                     "estrutura": "🏛️", "fortificacao": "🛡️", "posto_avancado": "🏹",
                     "santuario": "✨", "templo": "⛪", "porto": "⚓", "mar": "🌊",
-                    "ruina": "🏚️", "caverna": "🕳️"
+                    "ruina": "🏚️", "caverna": "🕳️", "monumento": "🗿", "estatua": "🗿"
                 }
                 emoji = payload.get("emoji") or default_emojis.get(node_type.lower(), "📍")
                 
                 x = payload.get("x")
                 y = payload.get("y")
                 if x is None or y is None:
-                    existing_nodes = self.repo.get_map_nodes(campaign_id)
-                    count = len(existing_nodes)
-                    angle = (count * 0.897) + 0.3
-                    radius = 160.0 + ((count // 6) * 110.0)
-                    x = round(radius * math.cos(angle), 1)
-                    y = round(radius * math.sin(angle), 1)
+                    x, y = self._calculate_orbital_position(campaign_id, node_type, payload.get("categoria", ""))
 
                 status_node = payload.get("status", "ativo")
                 metadata = payload.get("metadata", {})
                 if not isinstance(metadata, dict):
-                    metadata = {"detalhes": str(metadata)}
-
+                    metadata = {}
+                
                 self.repo.upsert_map_node(
                     node_id=node_id,
                     campaign_id=campaign_id,
@@ -489,21 +731,21 @@ class GameEngine:
                     x=float(x),
                     y=float(y),
                     status=status_node,
+                    size=node_size,
                     metadata=metadata
                 )
 
-                connect_to = payload.get("connect_to") or payload.get("parent_node_id")
+                connect_to = payload.get("connect_to")
+                edge_type = payload.get("edge_type", "estrada")
                 if connect_to:
-                    edge_id = f"edge_{node_id}_{connect_to}_{str(uuid.uuid4())[:4]}"
-                    edge_type = payload.get("edge_type", "estrada")
-                    desc = payload.get("edge_desc", payload.get("descricao", "Rota Conectada"))
+                    edge_id = f"edge_{node_id}_{connect_to}"
                     self.repo.upsert_map_edge(
                         edge_id=edge_id,
                         campaign_id=campaign_id,
-                        source_node_id=str(connect_to),
-                        target_node_id=str(node_id),
+                        source_node_id=node_id,
+                        target_node_id=str(connect_to),
                         edge_type=edge_type,
-                        descricao=desc
+                        descricao=payload.get("edge_desc", "")
                     )
 
             elif action_type == "update_map_node":
@@ -513,17 +755,23 @@ class GameEngine:
                     matched = [n for n in existing_nodes if n["id"] == str(node_id) or n["label"] == str(node_id)]
                     if matched:
                         target = matched[0]
-                        updated_metadata = {**target.get("metadata", {}), **payload.get("metadata", {})}
+                        new_meta = target.get("metadata", {})
+                        if "metadata" in payload and isinstance(payload["metadata"], dict):
+                            new_meta.update(payload["metadata"])
+                        
+                        target_nt = payload.get("node_type", target.get("node_type", "estrutura"))
+                        target_size = self._infer_node_size(target_nt, payload.get("size") or target.get("size"))
                         self.repo.upsert_map_node(
                             node_id=target["id"],
                             campaign_id=campaign_id,
                             label=payload.get("label", target["label"]),
-                            node_type=payload.get("node_type", target.get("node_type", "estrutura")),
+                            node_type=target_nt,
                             emoji=payload.get("emoji", target.get("emoji", "📍")),
-                            x=float(payload.get("x", target["x"])),
-                            y=float(payload.get("y", target["y"])),
+                            x=float(payload.get("x", target.get("x", 0.0))),
+                            y=float(payload.get("y", target.get("y", 0.0))),
                             status=payload.get("status", target.get("status", "ativo")),
-                            metadata=updated_metadata
+                            size=target_size,
+                            metadata=new_meta
                         )
 
             elif action_type == "remove_map_node":
@@ -535,16 +783,16 @@ class GameEngine:
                 source = payload.get("source_node_id") or payload.get("source")
                 target = payload.get("target_node_id") or payload.get("target")
                 if source and target:
-                    edge_id = payload.get("id") or f"edge_{source}_{target}_{str(uuid.uuid4())[:4]}"
+                    edge_id = payload.get("id") or f"edge_{source}_{target}"
                     edge_type = payload.get("edge_type", "estrada")
-                    descricao = payload.get("descricao", "")
+                    desc = payload.get("descricao", "")
                     self.repo.upsert_map_edge(
                         edge_id=edge_id,
                         campaign_id=campaign_id,
                         source_node_id=str(source),
                         target_node_id=str(target),
                         edge_type=edge_type,
-                        descricao=descricao
+                        descricao=desc
                     )
 
             elif action_type in ["disconnect_map_nodes", "remove_map_edge"]:
@@ -557,6 +805,24 @@ class GameEngine:
                     if source and target:
                         self.repo.delete_map_edge_between(campaign_id, str(source), str(target))
 
+            elif action_type == "place_asset_on_map":
+                asset_id = payload.get("asset_id") or payload.get("id") or payload.get("nome")
+                if asset_id:
+                    self.place_asset_on_map(
+                        campaign_id=campaign_id,
+                        asset_id=str(asset_id),
+                        x=payload.get("x"),
+                        y=payload.get("y"),
+                        node_type=payload.get("node_type"),
+                        size=payload.get("size") or payload.get("tamanho_no"),
+                        connect_to_capital=payload.get("connect_to_capital", True)
+                    )
+
+            elif action_type == "unplace_asset_from_map":
+                asset_id = payload.get("asset_id") or payload.get("id") or payload.get("nome")
+                if asset_id:
+                    self.unplace_asset_from_map(campaign_id=campaign_id, asset_id=str(asset_id))
+
     def _process_turn_response(
         self,
         campaign_id: str,
@@ -565,10 +831,16 @@ class GameEngine:
         kingdom_name: str,
         race: str,
         user_action: str,
-        response_json: Dict[str, Any]
+        response_json: Dict[str, Any],
+        evaluation_result: Optional[EvaluationResult] = None
     ) -> TurnResponse:
         narrative = response_json.get("aventura", "O destino se desenrola diante de vossos olhos...")
         status_dict = response_json.get("status_reino", {})
+
+        latest_ws = self.repo.get_latest_world_state(campaign_id) if turn_number > 1 else None
+        prev_day = latest_ws.get("current_day", 1) if latest_ws else 1
+        days_passed = evaluation_result.dias_passados if evaluation_result else (1 if turn_number > 1 else 0)
+        current_day = prev_day + days_passed if turn_number > 1 else 1
 
         pop_val = status_dict.get("populacao") or status_dict.get("população") or status_dict.get("population") or 10000
         try:
@@ -576,14 +848,26 @@ class GameEngine:
         except (ValueError, TypeError):
             pop_int = 10000
 
+        if evaluation_result and evaluation_result.delta_dinheiro is not None and latest_ws:
+            final_gold = max(0, latest_ws.get("gold", 5000) + evaluation_result.delta_dinheiro)
+        else:
+            final_gold = int(status_dict.get("dinheiro", 5000))
+
+        if evaluation_result and evaluation_result.delta_poder_militar is not None and latest_ws:
+            final_mil = max(0, latest_ws.get("military", 1000) + evaluation_result.delta_poder_militar)
+        else:
+            final_mil = int(status_dict.get("poder_militar", 1000))
+
         status = KingdomStatus(
             nome_reino=status_dict.get("nome_reino", kingdom_name),
             imperador=status_dict.get("imperador", ruler_name),
-            dinheiro=int(status_dict.get("dinheiro", 5000)),
+            dinheiro=final_gold,
             populacao=pop_int,
             religião=status_dict.get("religião", "Nenhuma"),
-            poder_militar=int(status_dict.get("poder_militar", 1000)),
-            felicidade=str(status_dict.get("felicidade", "70%"))
+            poder_militar=final_mil,
+            felicidade=str(status_dict.get("felicidade", "70%")),
+            dia_atual=current_day,
+            dias_passados=days_passed if turn_number > 1 else 0
         )
 
         response_json["user_action"] = user_action
@@ -599,8 +883,27 @@ class GameEngine:
             military=status.poder_militar,
             happiness=status.felicidade,
             religion=status.religião,
+            current_day=current_day,
             raw_state_json=response_json
         )
+
+        if evaluation_result and evaluation_result.eventos_periodicos_disparados:
+            for ev in evaluation_result.eventos_periodicos_disparados:
+                ev_id = ev.get("id")
+                intervalo = ev.get("intervalo_dias", 30)
+                next_disp = current_day + intervalo
+                self.repo.upsert_periodic_event(
+                    event_id=ev_id,
+                    campaign_id=campaign_id,
+                    titulo=ev.get("titulo", "Evento Periódico"),
+                    intervalo_dias=intervalo,
+                    proximo_disparo_dia=next_disp,
+                    descricao=ev.get("descricao", ""),
+                    ultimo_disparo_dia=current_day,
+                    efeito=ev.get("efeito", {}),
+                    status=ev.get("status", "ativo"),
+                    criado_no_turno=ev.get("criado_no_turno", 1)
+                )
 
         memory_text = f"Turno {turn_number}: Jogador ordenou '{user_action}'. Consequência: {narrative[:300]}"
         importance = calculate_importance(memory_text)
@@ -660,7 +963,7 @@ class GameEngine:
                     ))
 
         if parsed_actions:
-            self.apply_actions(campaign_id, parsed_actions, turn_number)
+            self.apply_actions(campaign_id, parsed_actions, turn_number, current_day)
 
         if "personagens" in response_json and isinstance(response_json["personagens"], list):
             for idx, c in enumerate(response_json["personagens"]):
@@ -719,6 +1022,7 @@ class GameEngine:
         return {
             "items": self.repo.get_campaign_items(campaign_id),
             "tasks": self.repo.get_campaign_tasks(campaign_id),
+            "periodic_events": self.repo.get_periodic_events(campaign_id),
             "allies": self.repo.get_campaign_allies(campaign_id),
             "map_nodes": self.repo.get_map_nodes(campaign_id),
             "map_edges": self.repo.get_map_edges(campaign_id)
@@ -726,32 +1030,34 @@ class GameEngine:
 
     def estimate_action_impact(self, campaign_id: str, action_text: str) -> Dict[str, Any]:
         latest_ws = self.repo.get_latest_world_state(campaign_id)
-        current_gold = latest_ws["gold"] if latest_ws else 5000
-        current_military = latest_ws["military"] if latest_ws else 1000
+        if not latest_ws:
+            return {"dinheiro": None, "poder_militar": None, "populacao": None, "dias_passados": 1, "tipo_execucao": "imediata", "viabilidade": True, "explicacao": ""}
 
-        prompt = f"""Dada a seguinte ação pretendida pelo imperador: "{action_text}"
-Status atual do reino: Dinheiro = {current_gold}, Poder Militar = {current_military}.
-Estime os custos ou ganhos DIRETOS e PREVISÍVEIS desta ação em dinheiro e poder militar.
-Se a ação for incerta (ex: combate, sorte, expedição de risco), coloque null.
-Sua resposta deve ser APENAS um JSON válido no formato:
-{{
-  "dinheiro": -500 ou 200 ou null,
-  "poder_militar": 100 ou -50 ou null,
-  "explicacao": "Breve justificativa de 1 frase."
-}}"""
-        try:
-            res = self.provider.generate_json(
-                prompt=prompt,
-                system_instruction="Você é um assistente de cálculo de custos econômicos e militares para RPG.",
-                temperature=0.2
-            )
-            return {
-                "dinheiro": res.get("dinheiro"),
-                "poder_militar": res.get("poder_militar"),
-                "explicacao": res.get("explicacao", "")
-            }
-        except Exception:
-            return {"dinheiro": None, "poder_militar": None, "explicacao": ""}
+        prev_opcoes = latest_ws.get("raw_state", {}).get("opcoes", [])
+        if not prev_opcoes:
+            prev_opcoes = self._extract_opcoes(latest_ws.get("raw_state", {}), latest_ws.get("raw_state", {}).get("aventura", ""))
+
+        active_tasks = self.repo.get_campaign_tasks(campaign_id)
+        periodic_events = self.repo.get_periodic_events(campaign_id)
+
+        eval_res = self.evaluator.evaluate_action(
+            campaign_id=campaign_id,
+            action_text=action_text,
+            previous_opcoes=prev_opcoes,
+            current_world_state=latest_ws,
+            active_tasks=active_tasks,
+            periodic_events=periodic_events
+        )
+
+        return {
+            "dinheiro": eval_res.delta_dinheiro,
+            "poder_militar": eval_res.delta_poder_militar,
+            "populacao": eval_res.delta_populacao,
+            "dias_passados": eval_res.dias_passados,
+            "tipo_execucao": eval_res.tipo_execucao,
+            "viabilidade": eval_res.viabilidade,
+            "explicacao": eval_res.motivo_inviabilidade or eval_res.intencao_detectada
+        }
 
     def _extract_opcoes(self, response_json: Dict[str, Any], narrative: str) -> List[Any]:
         raw_opcoes = response_json.get("opcoes")
@@ -857,6 +1163,7 @@ Sua resposta deve ser APENAS um JSON válido no formato:
             "locations": self.repo.get_locations(campaign_id),
             "campaign_items": self.repo.get_campaign_items(campaign_id),
             "campaign_tasks": self.repo.get_campaign_tasks(campaign_id),
+            "periodic_events": self.repo.get_periodic_events(campaign_id),
             "campaign_allies": self.repo.get_campaign_allies(campaign_id),
             "map_nodes": self.repo.get_map_nodes(campaign_id),
             "map_edges": self.repo.get_map_edges(campaign_id)
@@ -902,6 +1209,7 @@ Sua resposta deve ser APENAS um JSON válido no formato:
                 military=ws["military"],
                 happiness=ws["happiness"],
                 religion=ws["religion"],
+                current_day=ws.get("current_day", 1),
                 raw_state_json=ws.get("raw_state", {})
             )
 
@@ -965,7 +1273,22 @@ Sua resposta deve ser APENAS um JSON válido no formato:
                 duracao_estimada=ct.get("duracao_estimada"),
                 objetivo_esperado=ct.get("objetivo_esperado"),
                 is_incidente=ct.get("is_incidente_dinamico", False) or ct.get("is_incidente", False),
+                dia_inicio=ct.get("dia_inicio", 1),
+                dias_estimados=ct.get("dias_estimados", 0),
                 criada_no_turno=ct.get("criada_no_turno", 1)
+            )
+        for pe in entities.get("periodic_events", []):
+            self.repo.upsert_periodic_event(
+                event_id=pe["id"],
+                campaign_id=campaign_id,
+                titulo=pe["titulo"],
+                intervalo_dias=pe.get("intervalo_dias", 30),
+                proximo_disparo_dia=pe.get("proximo_disparo_dia", 30),
+                descricao=pe.get("descricao", ""),
+                ultimo_disparo_dia=pe.get("ultimo_disparo_dia", 0),
+                efeito=pe.get("efeito", {}),
+                status=pe.get("status", "ativo"),
+                criado_no_turno=pe.get("criado_no_turno", 1)
             )
         for ca in entities.get("campaign_allies", []):
             self.repo.upsert_campaign_ally(
@@ -986,9 +1309,10 @@ Sua resposta deve ser APENAS um JSON válido no formato:
                 label=mn["label"],
                 node_type=mn.get("node_type", "estrutura"),
                 emoji=mn.get("emoji", "📍"),
-                x=mn.get("x", 0.0),
-                y=mn.get("y", 0.0),
+                x=float(mn.get("x", 0.0)),
+                y=float(mn.get("y", 0.0)),
                 status=mn.get("status", "ativo"),
+                size=mn.get("size") or self._infer_node_size(mn.get("node_type", "estrutura")),
                 metadata=mn.get("metadata", {})
             )
         for me in entities.get("map_edges", []):
@@ -1012,6 +1336,92 @@ Sua resposta deve ser APENAS um JSON válido no formato:
             )
 
         return campaign_id
+
+    def place_asset_on_map(
+        self,
+        campaign_id: str,
+        asset_id: str,
+        x: Optional[float] = None,
+        y: Optional[float] = None,
+        node_type: Optional[str] = None,
+        size: Optional[str] = None,
+        connect_to_capital: bool = True
+    ) -> Dict[str, Any]:
+        items = self.repo.get_campaign_items(campaign_id)
+        matched = [i for i in items if i["id"] == str(asset_id) or i["nome"] == str(asset_id)]
+        if not matched:
+            raise ValueError(f"Ativo {asset_id} não encontrado na campanha {campaign_id}")
+        target = matched[0]
+        cat = target.get("categoria", "estrutura")
+        nome = target.get("nome", "Ativo")
+        attrs = target.get("atributos", {})
+        
+        if not node_type:
+            nom_lower = nome.lower()
+            if "santuario" in nom_lower or "santuário" in nom_lower or cat == "santuario":
+                target_nt = "santuario"
+            elif "estatua" in nom_lower or "estátua" in nom_lower or "monumento" in nom_lower or cat in ["estatua", "monumento"]:
+                target_nt = "estatua"
+            elif "obra" in nom_lower or cat == "obra":
+                target_nt = "obra"
+            elif "fort" in nom_lower or "muralha" in nom_lower or cat == "fortificacao":
+                target_nt = "fortificacao"
+            elif cat in ["santuario", "fortificacao", "monumento", "estatua", "mina", "porto", "vila", "bioma"]:
+                target_nt = cat
+            else:
+                target_nt = "estrutura"
+        else:
+            target_nt = node_type
+
+        target_size = self._infer_node_size(target_nt, size or attrs.get("tamanho_no"))
+        
+        default_emojis = {
+            "capital": "🏰", "bioma": "🌲", "floresta": "🌲", "montanha": "⛰️",
+            "mina": "⛏️", "vila": "🌾", "fazenda": "🌾", "tropa": "⚔️",
+            "exercito": "⚔️", "patrulha": "🛡️", "reino_vizinho": "👑", "aliado": "👑",
+            "estrutura": "🏛️", "fortificacao": "🛡️", "posto_avancado": "🏹",
+            "santuario": "✨", "templo": "⛪", "porto": "⚓", "mar": "🌊",
+            "ruina": "🏚️", "caverna": "🕳️", "monumento": "🗿", "estatua": "🗿"
+        }
+        emoji = default_emojis.get(target_nt.lower(), "🏛️")
+        
+        if x is None or y is None:
+            x, y = self._calculate_orbital_position(campaign_id, target_nt, cat)
+
+        node_id = attrs.get("map_node_id") or f"node_{target['id']}"
+        self.repo.upsert_map_node(
+            node_id=node_id,
+            campaign_id=campaign_id,
+            label=nome,
+            node_type=target_nt,
+            emoji=emoji,
+            x=float(x),
+            y=float(y),
+            status="ativo",
+            size=target_size,
+            metadata={"asset_id": target["id"], "categoria": cat, "dono": "Reino"}
+        )
+        if connect_to_capital:
+            self.repo.upsert_map_edge(
+                edge_id=f"edge_cap_{node_id}",
+                campaign_id=campaign_id,
+                source_node_id="node_capital",
+                target_node_id=node_id,
+                edge_type="rota",
+                descricao=f"Acesso a {nome}"
+            )
+        self.repo.link_item_to_map_node(target["id"], campaign_id, node_id)
+        return {
+            "node_id": node_id,
+            "label": nome,
+            "node_type": target_nt,
+            "size": target_size,
+            "x": float(x),
+            "y": float(y)
+        }
+
+    def unplace_asset_from_map(self, campaign_id: str, asset_id: str) -> bool:
+        return self.repo.unlink_item_from_map_node(str(asset_id), campaign_id)
 
     def get_campaign_info(self, campaign_id: str) -> Optional[CampaignInfo]:
         camp = self.repo.get_campaign(campaign_id)

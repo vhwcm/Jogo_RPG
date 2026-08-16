@@ -51,8 +51,24 @@ const UI = {
         const turnoEl = document.getElementById('val-turno-badge');
         if (turnoEl) turnoEl.textContent = `Turno ${turnNum || 1}`;
 
-        if (race) {
-            this.updateRaceVisuals(race);
+        const day = status.dia_atual || 1;
+        const year = Math.floor((day - 1) / 365) + 1;
+        const dayInYear = ((day - 1) % 365) + 1;
+        const calEl = document.getElementById('val-calendar-badge');
+        if (calEl) calEl.textContent = `📅 Dia ${day} (Ano ${year}, Dia ${dayInYear})`;
+
+        const deltaEl = document.getElementById('val-day-delta');
+        if (deltaEl) {
+            if (status.dias_passados && status.dias_passados > 0) {
+                deltaEl.textContent = `+${status.dias_passados} dias`;
+                deltaEl.classList.remove('hidden');
+            } else {
+                deltaEl.classList.add('hidden');
+            }
+        }
+
+        if (race || status.imperador || status.nome_reino) {
+            this.updateRaceVisuals(race, status.imperador, status.nome_reino);
         }
 
         if (prev) {
@@ -150,6 +166,12 @@ const UI = {
                 } else {
                     this.showToast(`📜 Progresso da Quest: <strong>${title}</strong>${prog}`, 'action');
                 }
+            } else if (type === 'create_periodic_event') {
+                const title = p.titulo || 'Novo Evento Periódico';
+                this.showToast(`⏳ Evento Periódico Criado: <strong>${title}</strong> (a cada ${p.intervalo_dias || 30} dias)`, 'gain');
+            } else if (type === 'update_periodic_event') {
+                const title = p.titulo || p.id || 'Evento';
+                this.showToast(`⏳ Evento Periódico Atualizado: <strong>${title}</strong>`, 'action');
             } else if (type === 'add_ally') {
                 const name = p.nome || 'Novo Reino';
                 this.showToast(`👑 Novo Reino Conhecido: <strong>${name}</strong>`, 'action');
@@ -177,10 +199,67 @@ const UI = {
         const modalList = document.getElementById('inventory-list');
         const countBadge = document.getElementById('badge-inventory-count');
         const summaryTag = document.getElementById('inventory-summary-tag');
+        const mapList = document.getElementById('map-assets-list');
+        const mapBadge = document.getElementById('map-badge-assets');
 
         const count = items ? items.length : 0;
         if (countBadge) countBadge.textContent = count;
+        if (mapBadge) mapBadge.textContent = count;
         if (summaryTag) summaryTag.textContent = `${count} ${count === 1 ? 'Ativo Registrado' : 'Ativos Registrados'}`;
+
+        if (mapList) {
+            mapList.innerHTML = '';
+            if (!items || items.length === 0) {
+                mapList.innerHTML = '<div class="map-widget-empty">Nenhum ativo registrado</div>';
+            } else {
+                items.forEach(it => {
+                    const card = document.createElement('div');
+                    card.className = 'map-widget-card';
+                    const cat = (it.categoria || 'outro').toLowerCase();
+                    const attrs = it.atributos || {};
+                    const isOnMap = Boolean(attrs.no_mapa);
+                    const isPlaceable = Boolean(attrs.posicionavel_no_mapa);
+
+                    let icon = '🏛️';
+                    if (cat === 'santuario') icon = '⛪';
+                    else if (cat === 'monumento' || cat === 'estatua') icon = '🗿';
+                    else if (cat === 'obra') icon = '🏗️';
+                    else if (cat === 'posto_avancado') icon = '🛡️';
+                    else if (cat === 'criatura') icon = '🐉';
+                    else if (cat === 'artefato') icon = '✨';
+                    else if (cat === 'equipamento') icon = '⚔️';
+                    else if (cat === 'recurso') icon = '📦';
+
+                    let mapStatusBadge = '';
+                    if (isOnMap) {
+                        mapStatusBadge = '<span class="map-node-badge badge-on-map">📍 No Mapa</span>';
+                    } else if (isPlaceable) {
+                        mapStatusBadge = '<span class="map-node-badge badge-placeable">🗺️ Posicionável</span>';
+                    }
+
+                    card.innerHTML = `
+                        <div class="map-widget-card-header">
+                            <span class="map-widget-card-title">${icon} ${it.nome || 'Ativo'}</span>
+                            <div class="map-widget-header-badges">
+                                ${mapStatusBadge}
+                                <span class="map-widget-card-badge">${(it.categoria || 'ativo').replace('_', ' ')}</span>
+                            </div>
+                        </div>
+                        ${it.descricao ? `<div class="map-widget-card-desc">${it.descricao}</div>` : ''}
+                        ${isOnMap ? `
+                            <div class="map-widget-card-actions">
+                                <button class="btn-xs btn-outline focus-asset-btn" data-asset-id="${it.id}" data-node-id="${attrs.map_node_id || ''}">🔍 Focar Mapa</button>
+                            </div>
+                        ` : (isPlaceable ? `
+                            <div class="map-widget-card-actions">
+                                <button class="btn-xs btn-primary place-asset-btn" data-asset-id="${it.id}">📍 Posicionar</button>
+                            </div>
+                        ` : '')}
+                    `;
+                    mapList.appendChild(card);
+                });
+            }
+        }
 
         if (!modalList) return;
         modalList.innerHTML = '';
@@ -196,9 +275,11 @@ const UI = {
 
             const cat = (it.categoria || 'outro').toLowerCase();
             const badgeClass = `badge-${cat.replace(/\s+/g, '_')}`;
+            const attrs = it.atributos || {};
+            const isOnMap = Boolean(attrs.no_mapa);
+            const isPlaceable = Boolean(attrs.posicionavel_no_mapa);
 
             let attrHtml = '';
-            const attrs = it.atributos || {};
             const keys = Object.keys(attrs);
             if (keys.length > 0) {
                 attrHtml = '<div class="attr-tag-group">';
@@ -210,11 +291,35 @@ const UI = {
 
             let iconPrefix = '🏛️';
             if (cat === 'santuario') iconPrefix = '⛪';
+            else if (cat === 'monumento' || cat === 'estatua') iconPrefix = '🗿';
+            else if (cat === 'obra') iconPrefix = '🏗️';
             else if (cat === 'posto_avancado') iconPrefix = '🛡️';
             else if (cat === 'criatura') iconPrefix = '🐉';
             else if (cat === 'artefato') iconPrefix = '✨';
             else if (cat === 'equipamento') iconPrefix = '⚔️';
             else if (cat === 'recurso') iconPrefix = '📦';
+
+            let mapStatusHtml = '';
+            if (isOnMap) {
+                mapStatusHtml = `
+                    <div class="card-action-row">
+                        <span class="map-node-badge badge-on-map">📍 Posicionado no Mapa</span>
+                        <div class="card-action-buttons">
+                            <button class="btn-secondary btn-sm focus-asset-btn" data-asset-id="${it.id}" data-node-id="${attrs.map_node_id || ''}">🔍 Focar Câmera</button>
+                            <button class="btn-danger-outline btn-sm unplace-asset-btn" data-asset-id="${it.id}">Remover do Mapa</button>
+                        </div>
+                    </div>
+                `;
+            } else if (isPlaceable) {
+                mapStatusHtml = `
+                    <div class="card-action-row">
+                        <span class="map-node-badge badge-placeable">🗺️ Posicionável no Mapa</span>
+                        <div class="card-action-buttons">
+                            <button class="btn-primary btn-sm place-asset-btn" data-asset-id="${it.id}">📍 Posicionar no Mapa</button>
+                        </div>
+                    </div>
+                `;
+            }
 
             card.innerHTML = `
                 <div class="modular-card-header">
@@ -223,6 +328,7 @@ const UI = {
                 </div>
                 <p class="modular-card-desc">${it.descricao || 'Sem descrição detalhada.'}</p>
                 ${attrHtml}
+                ${mapStatusHtml}
             `;
             modalList.appendChild(card);
         });
@@ -232,10 +338,40 @@ const UI = {
         const liveList = document.getElementById('tasks-live-list');
         const countBadge = document.getElementById('badge-tasks-count');
         const summaryTag = document.getElementById('quests-summary-tag');
+        const mapList = document.getElementById('map-quests-list');
+        const mapBadge = document.getElementById('map-badge-quests');
 
         const activeCount = tasks ? tasks.filter(t => t.status === 'em_andamento').length : 0;
         if (countBadge) countBadge.textContent = activeCount;
+        if (mapBadge) mapBadge.textContent = activeCount;
         if (summaryTag) summaryTag.textContent = `${activeCount} ${activeCount === 1 ? 'Quest Ativa' : 'Quests Ativas'}`;
+
+        if (mapList) {
+            mapList.innerHTML = '';
+            if (!tasks || tasks.length === 0) {
+                mapList.innerHTML = '<div class="map-widget-empty">Nenhuma quest ativa</div>';
+            } else {
+                tasks.forEach(tk => {
+                    const card = document.createElement('div');
+                    card.className = 'map-widget-card';
+                    const progClamped = tk.progresso !== null && tk.progresso !== undefined ? Math.max(0, Math.min(100, Number(tk.progresso))) : null;
+                    const isIncident = tk.is_incidente_dinamico || tk.is_incidente;
+                    card.innerHTML = `
+                        <div class="map-widget-card-header">
+                            <span class="map-widget-card-title">${isIncident ? '⚡ ' : '⚔️ '}${tk.titulo || 'Quest'}</span>
+                            <span class="map-widget-card-badge">${progClamped !== null ? progClamped + '%' : (tk.status || 'em andamento').replace('_', ' ')}</span>
+                        </div>
+                        ${tk.objetivo_esperado ? `<div class="map-widget-card-desc">🎯 ${tk.objetivo_esperado}</div>` : (tk.descricao ? `<div class="map-widget-card-desc">${tk.descricao}</div>` : '')}
+                        ${progClamped !== null ? `
+                            <div class="map-widget-mini-progress">
+                                <div class="map-widget-mini-progress-fill" style="width: ${progClamped}%;"></div>
+                            </div>
+                        ` : ''}
+                    `;
+                    mapList.appendChild(card);
+                });
+            }
+        }
 
         if (!liveList) return;
         liveList.innerHTML = '';
@@ -269,7 +405,14 @@ const UI = {
             }
 
             let durationMeta = '';
-            if (tk.duracao_estimada) {
+            if (tk.dias_estimados && tk.dias_estimados > 0) {
+                durationMeta = `
+                    <div class="task-meta-row" style="margin-top: 4px; font-size: 0.78rem; color: var(--text-muted);">
+                        <span>📅 Iniciado no Dia ${tk.dia_inicio || 1}</span>
+                        <span>⏳ Duração: ~${tk.dias_estimados} dias</span>
+                    </div>
+                `;
+            } else if (tk.duracao_estimada) {
                 durationMeta = `
                     <div class="task-meta-row" style="margin-top: 4px;">
                         <span>⏳ ${tk.duracao_estimada}</span>
@@ -289,6 +432,87 @@ const UI = {
                 ${tk.objetivo_esperado ? `<p style="font-size: 0.82rem; color: var(--gold-primary);">🎯 <strong>Objetivo:</strong> ${tk.objetivo_esperado}</p>` : ''}
                 ${progressHtml}
                 ${durationMeta}
+            `;
+            liveList.appendChild(card);
+        });
+    },
+
+    renderEvents(events, currentDay = 1) {
+        const liveList = document.getElementById('events-live-list');
+        const countBadge = document.getElementById('badge-events-count');
+        const summaryTag = document.getElementById('events-summary-tag');
+        const mapList = document.getElementById('map-events-list');
+        const mapBadge = document.getElementById('map-badge-events');
+
+        const activeCount = events ? events.filter(e => e.status === 'ativo').length : 0;
+        if (countBadge) countBadge.textContent = activeCount;
+        if (mapBadge) mapBadge.textContent = activeCount;
+        if (summaryTag) summaryTag.textContent = `${activeCount} ${activeCount === 1 ? 'Evento Ativo' : 'Eventos Ativos'}`;
+
+        if (mapList) {
+            mapList.innerHTML = '';
+            if (!events || events.length === 0) {
+                mapList.innerHTML = '<div class="map-widget-empty">Nenhum evento agendado</div>';
+            } else {
+                events.forEach(ev => {
+                    const card = document.createElement('div');
+                    card.className = 'map-widget-card';
+                    const nextDay = ev.proximo_disparo_dia || (currentDay + (ev.intervalo_dias || 30));
+                    const daysRemaining = Math.max(0, nextDay - currentDay);
+                    card.innerHTML = `
+                        <div class="map-widget-card-header">
+                            <span class="map-widget-card-title">⏳ ${ev.titulo || 'Evento'}</span>
+                            <span class="map-widget-card-badge">${daysRemaining}d restantes</span>
+                        </div>
+                        <div class="map-widget-card-meta">
+                            <span>A cada ${ev.intervalo_dias}d (Próx: Dia ${nextDay})</span>
+                        </div>
+                    `;
+                    mapList.appendChild(card);
+                });
+            }
+        }
+
+        if (!liveList) return;
+        liveList.innerHTML = '';
+
+        if (!events || events.length === 0) {
+            liveList.innerHTML = '<div class="modular-card"><p style="color: var(--text-muted); font-size: 0.85rem;">Nenhum evento periódico ou tributo recorrente ativo.</p></div>';
+            return;
+        }
+
+        events.forEach(ev => {
+            const card = document.createElement('div');
+            card.className = 'modular-card';
+
+            const statusClass = `badge-status-${ev.status || 'ativo'}`;
+            const nextDay = ev.proximo_disparo_dia || (currentDay + (ev.intervalo_dias || 30));
+            const daysRemaining = Math.max(0, nextDay - currentDay);
+
+            let effectHtml = '';
+            const ef = ev.efeito || {};
+            const efKeys = Object.keys(ef);
+            if (efKeys.length > 0) {
+                effectHtml = '<div class="attr-tag-group">';
+                efKeys.forEach(k => {
+                    const val = ef[k];
+                    const sign = typeof val === 'number' && val > 0 ? '+' : '';
+                    effectHtml += `<span class="attr-tag" style="color: #fbbf24;">⚡ ${k}: ${sign}${val}</span>`;
+                });
+                effectHtml += '</div>';
+            }
+
+            card.innerHTML = `
+                <div class="modular-card-header">
+                    <span class="modular-card-title">⏳ ${ev.titulo || 'Evento Periódico'}</span>
+                    <span class="modular-badge ${statusClass}">${ev.status || 'ativo'}</span>
+                </div>
+                <p class="modular-card-desc">${ev.descricao || 'Sem descrição.'}</p>
+                <div style="display: flex; gap: 12px; margin: 6px 0; font-size: 0.8rem; color: var(--text-muted);">
+                    <span>🔁 Intervalo: <strong>${ev.intervalo_dias} dias</strong></span>
+                    <span>🎯 Próximo: <strong>Dia ${nextDay}</strong> (em ${daysRemaining} dias)</span>
+                </div>
+                ${effectHtml}
             `;
             liveList.appendChild(card);
         });
@@ -328,7 +552,7 @@ const UI = {
                     <span class="modular-badge ${badgeClass}">${status}</span>
                 </div>
                 <div style="font-size: 0.86rem; color: #e2e8f0; display: flex; flex-direction: column; gap: 4px;">
-                    <div>👑 <strong>Soberano:</strong> ${al.rei || 'Desconhecido'}</div>
+                    <div>👑 <strong>Soberano:</strong> ${al.rei || 'Desconhecido'} <span style="color: var(--accent-gold); font-size: 0.8rem; margin-left: 4px;">(${al.raca || 'Humano'})</span></div>
                     <div style="display: flex; gap: 14px; color: var(--text-muted); font-size: 0.8rem;">
                         <span>⚔️ Militar: <strong style="color: #fff;">${al.poder_militar || 'N/A'}</strong></span>
                         <span>👥 População: <strong style="color: #fff;">${al.populacao || 'N/A'}</strong></span>
@@ -353,7 +577,7 @@ const UI = {
         const container = document.getElementById('preflight-estimate');
         if (!container) return;
 
-        if (!estimate || (estimate.dinheiro === null && estimate.poder_militar === null)) {
+        if (!estimate) {
             container.classList.add('hidden');
             container.innerHTML = '';
             return;
@@ -370,6 +594,15 @@ const UI = {
             const sign = estimate.poder_militar > 0 ? '+' : '';
             badgesHtml += `<span class="badge-impact ${classType}">⚔️ ${sign}${estimate.poder_militar.toLocaleString()} Militar</span>`;
         }
+        if (estimate.dias_passados !== null && estimate.dias_passados !== undefined && estimate.dias_passados > 0) {
+            badgesHtml += `<span class="badge-impact badge-days-delta">📅 +${estimate.dias_passados} dias</span>`;
+        }
+        if (estimate.tipo_execucao === 'longo_prazo') {
+            badgesHtml += `<span class="badge-impact badge-long-term">⏳ Longo Prazo</span>`;
+        }
+        if (estimate.viabilidade === false) {
+            badgesHtml += `<span class="badge-impact badge-cost">⚠️ Inviável</span>`;
+        }
 
         if (!badgesHtml) {
             container.classList.add('hidden');
@@ -383,7 +616,7 @@ const UI = {
         container.classList.remove('hidden');
     },
 
-    updateRaceVisuals(race) {
+    updateRaceVisuals(race, rulerName, kingdomName) {
         const normRace = Object.keys(RACE_ASSETS).find(k => k.toLowerCase() === (race || '').toLowerCase()) || 'Humano';
         const assetInfo = RACE_ASSETS[normRace] || RACE_ASSETS['Humano'];
 
@@ -393,6 +626,23 @@ const UI = {
             bgOverlay.style.backgroundImage = `linear-gradient(rgba(5, 5, 8, 0.82), rgba(5, 5, 8, 0.98)), url('${bgPath}')`;
             bgOverlay.style.backgroundSize = 'cover';
             bgOverlay.style.backgroundPosition = 'center';
+        }
+
+        const portraitImg = document.getElementById('map-portrait-img');
+        if (portraitImg) {
+            portraitImg.src = `assets/lideres/${encodeURIComponent(assetInfo.leader)}`;
+        }
+        const portraitRace = document.getElementById('map-portrait-race');
+        if (portraitRace) {
+            portraitRace.textContent = normRace;
+        }
+        if (rulerName) {
+            const portraitName = document.getElementById('map-portrait-name');
+            if (portraitName) portraitName.textContent = rulerName;
+        }
+        if (kingdomName) {
+            const portraitKingdom = document.getElementById('map-portrait-kingdom');
+            if (portraitKingdom) portraitKingdom.textContent = kingdomName;
         }
     },
 
@@ -618,7 +868,7 @@ const UI = {
     },
 
     openInspector(node) {
-        const drawer = document.getElementById('inspector-drawer');
+        const drawer = document.getElementById('tactical-inspector') || document.getElementById('inspector-drawer');
         if (!drawer || !node) return;
 
         this.inspectorOpen = true;
@@ -827,7 +1077,7 @@ const UI = {
     },
 
     closeInspector() {
-        const drawer = document.getElementById('inspector-drawer');
+        const drawer = document.getElementById('tactical-inspector') || document.getElementById('inspector-drawer');
         if (drawer) {
             drawer.classList.add('hidden');
         }

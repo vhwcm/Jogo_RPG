@@ -118,7 +118,7 @@ body {
     position: relative;
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-glass);
-    background: radial-gradient(circle at center, rgba(16, 16, 24, 0.7), rgba(4, 4, 8, 0.98));
+    background: radial-gradient(circle at center, #11111c 0%, #06060a 100%);
     box-shadow: var(--shadow-glow);
 }
 

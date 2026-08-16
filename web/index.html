@@ -8,8 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/main.css?v=7">
-    <link rel="stylesheet" href="css/components.css?v=7">
+    <link rel="stylesheet" href="css/main.css?v=9">
+    <link rel="stylesheet" href="css/components.css?v=9">
 </head>
 <body>
     <div id="toast-container" class="toast-container"></div>
@@ -28,7 +28,9 @@
                     <div class="hud-identity">
                         <span class="hud-kingdom-name" id="val-reino">Valdrin</span>
                         <span class="hud-ruler" id="val-imperador">Arthur</span>
+                        <span class="hud-calendar" id="val-calendar-badge">📅 Dia 1 (Ano 1)</span>
                         <span class="hud-turn" id="val-turno-badge">Turno 1</span>
+                        <span class="hud-day-delta hidden" id="val-day-delta">+0 dias</span>
                     </div>
                     <div class="hud-stats">
                         <div class="hud-stat" id="card-dinheiro">
@@ -81,6 +83,53 @@
                     <div id="map-tooltip" class="map-tooltip hidden"></div>
                 </div>
 
+                <div class="map-corner-widget map-widget-top-left" id="map-overlay-quests">
+                    <div class="map-widget-header">
+                        <div class="map-widget-title-group">
+                            <span class="map-widget-icon">⚔️</span>
+                            <span class="map-widget-title">Quests Ativas</span>
+                        </div>
+                        <span id="map-badge-quests" class="map-widget-badge">0</span>
+                    </div>
+                    <div id="map-quests-list" class="map-widget-body"></div>
+                </div>
+
+                <div class="map-corner-widget map-widget-bottom-left" id="map-overlay-events">
+                    <div class="map-widget-header">
+                        <div class="map-widget-title-group">
+                            <span class="map-widget-icon">⏳</span>
+                            <span class="map-widget-title">Eventos & Cronograma</span>
+                        </div>
+                        <span id="map-badge-events" class="map-widget-badge">0</span>
+                    </div>
+                    <div id="map-events-list" class="map-widget-body"></div>
+                </div>
+
+                <div class="map-corner-widget map-widget-top-right" id="map-overlay-assets">
+                    <div class="map-widget-header">
+                        <div class="map-widget-title-group">
+                            <span class="map-widget-icon">🏛️</span>
+                            <span class="map-widget-title">Ativos & Estruturas</span>
+                        </div>
+                        <span id="map-badge-assets" class="map-widget-badge">0</span>
+                    </div>
+                    <div id="map-assets-list" class="map-widget-body"></div>
+                </div>
+
+                <div class="map-corner-widget map-widget-bottom-right map-portrait-widget" id="map-overlay-portrait">
+                    <div class="map-portrait-avatar-wrapper">
+                        <img id="map-portrait-img" class="map-portrait-img" src="assets/lideres/humano.jpeg" alt="Líder do Reino">
+                    </div>
+                    <div class="map-portrait-info">
+                        <span class="map-portrait-label">SOBERANO(A)</span>
+                        <div class="map-portrait-name" id="map-portrait-name">Arthur Pendragon</div>
+                        <div class="map-portrait-meta">
+                            <span class="map-portrait-kingdom" id="map-portrait-kingdom">Valdrin</span>
+                            <span class="map-portrait-race" id="map-portrait-race">Humano</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="tactical-toolbar glass-panel" id="tactical-toolbar">
                     <button type="button" id="btn-audio-toggle" class="toolbar-btn" title="Música Ambiente">
                         <span id="audio-status-icon" class="toolbar-icon">🎵</span>
@@ -100,15 +149,15 @@
                         <span class="toolbar-label">Ativos</span>
                         <span id="badge-inventory-count" class="toolbar-badge">0</span>
                     </button>
-                    <button type="button" id="btn-allies-drawer" class="toolbar-btn" title="Diplomacia & Aliados">
-                        <span class="toolbar-icon">🤝</span>
-                        <span class="toolbar-label">Diplomacia</span>
-                        <span id="badge-allies-count" class="toolbar-badge">0</span>
-                    </button>
                     <button type="button" id="btn-quests-drawer" class="toolbar-btn" title="Quests & Objetivos">
                         <span class="toolbar-icon">⚔️</span>
                         <span class="toolbar-label">Quests</span>
                         <span id="badge-tasks-count" class="toolbar-badge">0</span>
+                    </button>
+                    <button type="button" id="btn-events-drawer" class="toolbar-btn" title="Cronograma & Eventos Periódicos">
+                        <span class="toolbar-icon">⏳</span>
+                        <span class="toolbar-label">Eventos</span>
+                        <span id="badge-events-count" class="toolbar-badge">0</span>
                     </button>
                     <div class="toolbar-divider"></div>
                     <div class="toolbar-graph-controls">
@@ -118,25 +167,22 @@
                         <button type="button" id="btn-map-reset-camera" class="toolbar-ctrl-btn" title="Reset Câmera">⟳</button>
                         <select id="map-layer-filter" class="toolbar-select" title="Filtro de Camada">
                             <option value="all">Todas Camadas</option>
-                            <option value="capital">Capital</option>
-                            <option value="estrutura">Estruturas</option>
-                            <option value="exercito">Exércitos</option>
-                            <option value="reino_vizinho">Reinos</option>
-                            <option value="npc">NPCs</option>
-                            <option value="quest">Quests</option>
-                            <option value="tropa">Tropas</option>
-                            <option value="bioma">Biomas</option>
+                            <option value="capital">Capitais</option>
+                            <option value="estrutura">Estruturas & Obras</option>
+                            <option value="tropa">Tropas & Patrulhas</option>
+                            <option value="reino_vizinho">Reinos Vizinhos</option>
+                            <option value="bioma">Biomas & Natureza</option>
                         </select>
                     </div>
                     <div class="toolbar-divider"></div>
                     <span id="map-nodes-count" class="toolbar-badge">0</span>
                 </div>
 
-                <div id="inspector-drawer" class="inspector-drawer hidden">
+                <div class="inspector-panel glass-panel hidden" id="tactical-inspector">
                     <div class="inspector-header">
-                        <div class="inspector-title-group">
-                            <span class="inspector-emoji" id="inspector-emoji">📍</span>
-                            <div class="inspector-title-col">
+                        <div class="inspector-header-left">
+                            <span class="inspector-icon" id="inspector-emoji">📍</span>
+                            <div class="inspector-titles">
                                 <span class="inspector-name" id="inspector-name">—</span>
                                 <span class="inspector-type" id="inspector-type">Entidade</span>
                             </div>
@@ -250,10 +296,26 @@
                     <span id="quests-summary-tag" class="header-summary-badge">0 Quests Ativas</span>
                 </div>
             </div>
-            <p class="modal-subtitle">Missões ativas, rumores investigados e incidentes dinâmicos do reino.</p>
+            <p class="modal-subtitle">Missões ativas, rumores investigados e incidentes dinâmicos do reino com contagem temporal.</p>
             <div id="tasks-live-list" class="modular-grid-list"></div>
             <div class="modal-actions">
                 <button type="button" id="btn-close-quests" class="btn btn-secondary">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-events" class="modal-backdrop hidden">
+        <div class="modal-content glass-panel drawer large-drawer">
+            <div class="modal-header-flex">
+                <h2>Cronograma & Eventos Periódicos</h2>
+                <div class="modal-header-actions">
+                    <span id="events-summary-tag" class="header-summary-badge">0 Eventos Ativos</span>
+                </div>
+            </div>
+            <p class="modal-subtitle">Tributos recorrentes, manutenções, treinamentos militares e eventos com intervalo em dias.</p>
+            <div id="events-live-list" class="modular-grid-list"></div>
+            <div class="modal-actions">
+                <button type="button" id="btn-close-events" class="btn btn-secondary">Fechar</button>
             </div>
         </div>
     </div>
@@ -276,9 +338,9 @@
         </div>
     </div>
 
-    <script src="js/audio.js"></script>
-    <script src="js/tactical_map.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/audio.js?v=9"></script>
+    <script src="js/tactical_map.js?v=9"></script>
+    <script src="js/ui.js?v=9"></script>
+    <script src="js/app.js?v=9"></script>
 </body>
 </html>

@@ -29,6 +29,14 @@ const TacticalMap = {
     dashOffset: 0,
     warPulsePhase: 0,
 
+    nodeSizes: {
+        'mega': 32,
+        'grande': 24,
+        'medio': 18,
+        'pequeno': 13,
+        'micro': 10
+    },
+
     nodeColors: {
         'capital': { border: '#d4af37', fill: 'rgba(212, 175, 55, 0.22)', glow: '#d4af37' },
         'bioma': { border: '#2a9d8f', fill: 'rgba(42, 157, 143, 0.2)', glow: '#2a9d8f' },
@@ -38,6 +46,9 @@ const TacticalMap = {
         'estrutura': { border: '#e76f51', fill: 'rgba(231, 111, 81, 0.2)', glow: '#e76f51' },
         'fortificacao': { border: '#e63946', fill: 'rgba(230, 57, 70, 0.2)', glow: '#e63946' },
         'santuario': { border: '#f4a261', fill: 'rgba(244, 162, 97, 0.2)', glow: '#f4a261' },
+        'monumento': { border: '#e0a96d', fill: 'rgba(224, 169, 109, 0.2)', glow: '#e0a96d' },
+        'estatua': { border: '#ffd166', fill: 'rgba(255, 209, 102, 0.2)', glow: '#ffd166' },
+        'obra': { border: '#f77f00', fill: 'rgba(247, 127, 0, 0.2)', glow: '#f77f00' },
         'ruina': { border: '#a8dadc', fill: 'rgba(168, 218, 220, 0.2)', glow: '#a8dadc' },
         'npc': { border: '#c084fc', fill: 'rgba(192, 132, 252, 0.18)', glow: '#c084fc' },
         'quest': { border: '#34d399', fill: 'rgba(52, 211, 153, 0.18)', glow: '#34d399' },
@@ -64,6 +75,9 @@ const TacticalMap = {
         'fortificacao': 'Fortaleza de Defesa',
         'posto_avancado': 'Posto Avançado',
         'santuario': 'Santuário Sagrado',
+        'monumento': 'Monumento do Reino',
+        'estatua': 'Estátua Sagrada',
+        'obra': 'Grande Obra / Edificação',
         'ruina': 'Ruína Antiga',
         'porto': 'Porto Marítimo',
         'npc': 'Personagem / Conselheiro',
@@ -150,7 +164,19 @@ const TacticalMap = {
         (nodes || []).forEach(n => {
             const existing = this.nodes.find(old => old.id === n.id);
             const nt = (n.node_type || 'estrutura').toLowerCase();
-            const baseRadius = nt === 'capital' ? 30 : (nt === 'exercito' || nt === 'tropa' ? 20 : (nt === 'reino_vizinho' ? 22 : 18));
+            const rawSize = (n.size || (n.metadata && n.metadata.size) || '').toLowerCase();
+            let baseRadius = this.nodeSizes[rawSize];
+            if (!baseRadius) {
+                if (nt === 'capital' || nt === 'reino_vizinho') {
+                    baseRadius = 32;
+                } else if (nt === 'exercito' || nt === 'fortificacao' || nt === 'bioma' || nt === 'floresta' || nt === 'montanha') {
+                    baseRadius = 24;
+                } else if (nt === 'santuario' || nt === 'estatua' || nt === 'obra' || nt === 'monumento' || nt === 'totem' || nt === 'altar' || nt === 'ruina') {
+                    baseRadius = 13;
+                } else {
+                    baseRadius = 18;
+                }
+            }
             nodesMap.set(n.id, {
                 id: n.id,
                 label: n.label || n.nome || 'Ponto',
@@ -159,6 +185,7 @@ const TacticalMap = {
                 x: typeof n.x === 'number' ? n.x : 0,
                 y: typeof n.y === 'number' ? n.y : 0,
                 status: n.status || 'ativo',
+                size: rawSize || (baseRadius >= 30 ? 'mega' : (baseRadius >= 22 ? 'grande' : (baseRadius <= 14 ? 'pequeno' : 'medio'))),
                 metadata: n.metadata || {},
                 radius: baseRadius,
                 currentRadius: existing ? existing.currentRadius : baseRadius
@@ -207,6 +234,17 @@ const TacticalMap = {
             this.camera.targetY = 0;
         }
         this.camera.targetZoom = 1.0;
+    },
+
+    focusNode(nodeId) {
+        const target = this.nodes.find(n => n.id === nodeId || (n.metadata && n.metadata.asset_id === nodeId));
+        if (target) {
+            this.selectedNode = target;
+            this.camera.targetX = -target.x;
+            this.camera.targetY = -target.y;
+            this.camera.targetZoom = 1.35;
+            window.dispatchEvent(new CustomEvent('node-inspect', { detail: target }));
+        }
     },
 
     resetCamera() {
@@ -414,6 +452,31 @@ const TacticalMap = {
         if (meta.detalhes) {
             metaRows += `<div class="tooltip-meta-item"><span>Nota:</span> <em>${meta.detalhes}</em></div>`;
         }
+        if (meta.rei) {
+            metaRows += `<div class="tooltip-meta-item"><span>Soberano:</span> <strong>👑 ${meta.rei}</strong></div>`;
+        }
+        if (meta.raca) {
+            metaRows += `<div class="tooltip-meta-item"><span>Raça:</span> <strong>🧬 ${meta.raca}</strong></div>`;
+        }
+        if (meta.poder_militar && node.node_type === 'reino_vizinho') {
+            metaRows += `<div class="tooltip-meta-item"><span>Força Militar:</span> <strong>⚔️ ${meta.poder_militar}</strong></div>`;
+        }
+        if (meta.relacionamento !== undefined || meta.status_diplomatico) {
+            const rel = meta.relacionamento !== undefined ? Math.max(-100, Math.min(100, Number(meta.relacionamento))) : 0;
+            const barColor = rel >= 60 ? '#2ecc71' : (rel >= 0 ? '#f1c40f' : '#e74c3c');
+            const statusLabel = (meta.status_diplomatico || (rel >= 60 ? 'Aliado' : (rel >= 0 ? 'Neutro' : 'Hostil'))).toUpperCase();
+            metaRows += `
+                <div class="tooltip-meta-item" style="margin-top: 6px; flex-direction: column; gap: 3px;">
+                    <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.76rem;">
+                        <span>Diplomacia: <strong style="color: ${barColor}">${statusLabel}</strong></span>
+                        <strong style="color: ${barColor}">${rel > 0 ? '+' : ''}${rel} / 100</strong>
+                    </div>
+                    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;">
+                        <div style="width: ${((rel + 100) / 200) * 100}%; height: 100%; background: ${barColor};"></div>
+                    </div>
+                </div>
+            `;
+        }
 
         const typeDisplay = this.typeLabels[node.node_type.toLowerCase()] || node.node_type;
 
@@ -481,7 +544,11 @@ const TacticalMap = {
         const width = rect.width;
         const height = rect.height;
 
-        this.ctx.clearRect(0, 0, width, height);
+        const grad = this.ctx.createRadialGradient(width / 2, height / 2, 40, width / 2, height / 2, Math.max(width, height) * 0.9);
+        grad.addColorStop(0, '#10101c');
+        grad.addColorStop(1, '#050509');
+        this.ctx.fillStyle = grad;
+        this.ctx.fillRect(0, 0, width, height);
 
         this.ctx.save();
         this.ctx.translate(width / 2 + this.camera.x, height / 2 + this.camera.y);
@@ -631,20 +698,20 @@ const TacticalMap = {
             const alpha = isDimmed ? 0.25 : 1.0;
             ctx.globalAlpha = alpha;
 
-            if (node.node_type === 'capital') {
+            if (node.node_type === 'capital' || node.size === 'mega') {
                 ctx.shadowColor = colors.glow;
-                ctx.shadowBlur = isHovered ? 22 : 14;
+                ctx.shadowBlur = isHovered ? 24 : 15;
                 ctx.beginPath();
-                ctx.arc(0, 0, node.currentRadius + 4, 0, Math.PI * 2);
-                ctx.strokeStyle = `rgba(212, 175, 55, ${isHovered ? 0.6 : 0.25})`;
-                ctx.lineWidth = 1;
+                ctx.arc(0, 0, node.currentRadius + 5, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(212, 175, 55, ${isHovered ? 0.65 : 0.3})`;
+                ctx.lineWidth = 1.2;
                 ctx.setLineDash([3, 3]);
                 ctx.stroke();
                 ctx.setLineDash([]);
-                ctx.shadowBlur = isHovered ? 22 : 14;
+                ctx.shadowBlur = isHovered ? 24 : 15;
             } else if (isHovered || isSelected) {
                 ctx.shadowColor = colors.glow;
-                ctx.shadowBlur = 18;
+                ctx.shadowBlur = node.radius <= 14 ? 10 : 18;
             }
 
             if (node.node_type === 'rumor') {
@@ -656,7 +723,7 @@ const TacticalMap = {
             ctx.fillStyle = colors.fill;
             ctx.fill();
 
-            ctx.lineWidth = isHovered ? 2.5 : 1.8;
+            ctx.lineWidth = isHovered ? (node.radius <= 14 ? 1.8 : 2.5) : (node.radius <= 14 ? 1.2 : 1.8);
             ctx.strokeStyle = colors.border;
             ctx.stroke();
 
@@ -673,20 +740,23 @@ const TacticalMap = {
             }
 
             const badgeColor = node.status === 'hostil' ? '#d94045' : (node.status === 'em_marcha' ? '#3a86ff' : (node.status === 'em_andamento' ? '#34d399' : '#2a9d8f'));
+            const badgeRadius = Math.max(2.5, Math.min(4, node.currentRadius * 0.22));
             ctx.beginPath();
-            ctx.arc(node.currentRadius * 0.7, -node.currentRadius * 0.7, 4, 0, Math.PI * 2);
+            ctx.arc(node.currentRadius * 0.72, -node.currentRadius * 0.72, badgeRadius, 0, Math.PI * 2);
             ctx.fillStyle = badgeColor;
             ctx.fill();
             ctx.strokeStyle = '#050508';
-            ctx.lineWidth = 1.2;
+            ctx.lineWidth = 1.0;
             ctx.stroke();
 
-            ctx.font = `${Math.round(node.currentRadius * 1.05)}px sans-serif`;
+            const emojiSize = Math.max(9, Math.round(node.currentRadius * 1.05));
+            ctx.font = `${emojiSize}px sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(node.emoji, 0, 1);
 
-            ctx.font = isHovered ? '600 11px Inter, sans-serif' : '500 10px Inter, sans-serif';
+            const fontSize = node.radius <= 14 ? (isHovered ? '600 10px Inter, sans-serif' : '500 9px Inter, sans-serif') : (isHovered ? '600 11px Inter, sans-serif' : '500 10px Inter, sans-serif');
+            ctx.font = fontSize;
             ctx.fillStyle = isHovered ? '#ffffff' : (isDimmed ? 'rgba(241, 241, 245, 0.3)' : 'rgba(241, 241, 245, 0.85)');
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
@@ -695,7 +765,46 @@ const TacticalMap = {
                 ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
                 ctx.shadowBlur = 4;
             }
-            ctx.fillText(node.label, 0, node.currentRadius + 5);
+            ctx.fillText(node.label, 0, node.currentRadius + 4);
+
+            if (node.node_type === 'reino_vizinho' || (node.metadata && (node.metadata.relacionamento !== undefined || node.metadata.status_diplomatico))) {
+                const meta = node.metadata || {};
+                const rel = meta.relacionamento !== undefined ? Number(meta.relacionamento) : 0;
+                const status = (meta.status_diplomatico || '').toLowerCase();
+                const diploColor = (status === 'aliado' || rel >= 60) ? '#2ecc71' : ((status === 'hostil' || status === 'guerra' || rel < 0) ? '#e74c3c' : '#f1c40f');
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, node.currentRadius + 3, 0, Math.PI * 2);
+                ctx.strokeStyle = diploColor;
+                ctx.lineWidth = isHovered ? 2.5 : 1.5;
+                ctx.setLineDash([4, 2]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                const sign = rel > 0 ? '+' : '';
+                const icon = (status === 'aliado' || rel >= 60) ? '🤝' : ((status === 'hostil' || status === 'guerra' || rel < 0) ? '⚔️' : '⚖️');
+                const badgeText = `${icon} ${sign}${rel}`;
+
+                ctx.font = '700 9px Inter, sans-serif';
+                const textMetrics = ctx.measureText(badgeText);
+                const badgeW = textMetrics.width + 10;
+                const badgeH = 14;
+                const badgeY = node.currentRadius + 18;
+
+                ctx.fillStyle = 'rgba(5, 5, 8, 0.85)';
+                ctx.beginPath();
+                ctx.roundRect(-badgeW / 2, badgeY, badgeW, badgeH, 4);
+                ctx.fill();
+
+                ctx.strokeStyle = diploColor;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                ctx.fillStyle = diploColor;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(badgeText, 0, badgeY + badgeH / 2);
+            }
 
             ctx.restore();
         }
