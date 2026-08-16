@@ -381,37 +381,42 @@ def test_place_asset_on_map_and_orbital_distribution(test_engine):
     assert item_unplaced["atributos"]["no_mapa"] is False
     assert item_unplaced["atributos"]["map_node_id"] is None
 
-def test_api_place_and_unplace_asset_endpoints():
-    from server.app import engine
-    client = TestClient(app)
-    cid = f"test_camp_api_{uuid.uuid4().hex[:6]}"
-    turn = engine.create_campaign(
-        campaign_name="Campanha API Ativos Mapa",
-        ruler_name="Imperatriz Luna",
-        kingdom_name="Lunaria",
-        race="Humano",
-        campaign_id=cid
-    )
+def test_api_place_and_unplace_asset_endpoints(test_engine):
+    import server.app
+    orig_engine = server.app.engine
+    server.app.engine = test_engine
+    try:
+        client = TestClient(app)
+        cid = f"test_camp_api_{uuid.uuid4().hex[:6]}"
+        turn = test_engine.create_campaign(
+            campaign_name="Campanha API Ativos Mapa",
+            ruler_name="Imperatriz Luna",
+            kingdom_name="Lunaria",
+            race="Humano",
+            campaign_id=cid
+        )
 
-    engine.apply_actions(cid, [GameAction(
-        action_type="add_structure",
-        payload={"id": "asset_santuario_api", "nome": "Santuário das Estrelas", "categoria": "santuario"}
-    )], turn_number=2)
+        test_engine.apply_actions(cid, [GameAction(
+            action_type="add_structure",
+            payload={"id": "asset_santuario_api", "nome": "Santuário das Estrelas", "categoria": "santuario"}
+        )], turn_number=2)
 
-    details = client.get(f"/api/campaigns/{cid}/state-details").json()
-    items = details.get("items", [])
-    assert len(items) > 0
+        details = client.get(f"/api/campaigns/{cid}/state-details").json()
+        items = details.get("items", [])
+        assert len(items) > 0
 
-    target_item = items[0]
-    place_resp = client.post(f"/api/campaigns/{cid}/assets/{target_item['id']}/place_on_map", json={
-        "connect_to_capital": True
-    })
-    assert place_resp.status_code == 200
-    res_data = place_resp.json()
-    assert res_data["status"] == "success"
-    assert res_data["result"]["size"] == "pequeno"
+        target_item = items[0]
+        place_resp = client.post(f"/api/campaigns/{cid}/assets/{target_item['id']}/place_on_map", json={
+            "connect_to_capital": True
+        })
+        assert place_resp.status_code == 200
+        res_data = place_resp.json()
+        assert res_data["status"] == "success"
+        assert res_data["result"]["size"] == "pequeno"
 
-    unplace_resp = client.post(f"/api/campaigns/{cid}/assets/{target_item['id']}/unplace_from_map")
-    assert unplace_resp.status_code == 200
-    assert unplace_resp.json()["status"] == "success"
+        unplace_resp = client.post(f"/api/campaigns/{cid}/assets/{target_item['id']}/unplace_from_map")
+        assert unplace_resp.status_code == 200
+        assert unplace_resp.json()["status"] == "success"
+    finally:
+        server.app.engine = orig_engine
 
