@@ -15,22 +15,26 @@ class ContextBuilder:
         user_input: str,
         short_term_history: List[Dict[str, str]]
     ) -> str:
-        # 1. Structured World State
         world_state = self.repo.get_latest_world_state(campaign_id) or {}
         characters = self.repo.get_characters(campaign_id)
         quests = self.repo.get_quests(campaign_id)
         campaign = self.repo.get_campaign(campaign_id) or {}
 
-        # 2. RAG Semantic Retrieval for Long-Term Memory
-        query_emb = self.provider.generate_embedding(user_input) if user_input else None
-        rag_memories = self.vector_store.search_memories(
-            campaign_id=campaign_id,
-            query_embedding=query_emb,
-            top_k=5,
-            importance_min=0.2
-        )
+        items = self.repo.get_campaign_items(campaign_id)
+        tasks = self.repo.get_campaign_tasks(campaign_id)
+        allies = self.repo.get_campaign_allies(campaign_id)
 
-        # Build prompt sections
+        rag_memories = []
+        recent_mems = self.vector_store.get_recent_memories(campaign_id, limit=1)
+        if recent_mems and user_input:
+            query_emb = self.provider.generate_embedding(user_input)
+            rag_memories = self.vector_store.search_memories(
+                campaign_id=campaign_id,
+                query_embedding=query_emb,
+                top_k=5,
+                importance_min=0.2
+            )
+
         lines = []
 
         lines.append("=== ESTADO ESTRUTURADO DO MUNDO ===")
@@ -39,6 +43,29 @@ class ContextBuilder:
         lines.append(f"Recursos: Ouro={world_state.get('gold', 5000)} | População={world_state.get('population', 10000)} | Poder Militar={world_state.get('military', 1000)} | Felicidade={world_state.get('happiness', '70%')}")
         lines.append(f"Religião Oficial: {world_state.get('religion', 'Nenhuma')}")
         lines.append("")
+
+        if items:
+            lines.append("=== ESTRUTURAS, CONSTRUÇÕES & ATIVOS DO REINO (PATRIMÔNIO/ITENS/CRIATURAS) ===")
+            for it in items:
+                attr_str = ", ".join(f"{k}: {v}" for k, v in it.get("atributos", {}).items())
+                attr_fmt = f" | Atributos: [{attr_str}]" if attr_str else ""
+                lines.append(f"- [{it['categoria'].upper()}] {it['nome']} (ID: {it['id']}): {it.get('descricao', '')}{attr_fmt}")
+            lines.append("")
+
+        if tasks:
+            lines.append("=== TAREFAS ATIVAS & INCIDENTES (TASKS) ===")
+            for tk in tasks:
+                prog = f"{tk['progresso']}%" if tk.get('progresso') is not None else "N/A"
+                inc = " [INCIDENTE DINÂMICO]" if tk.get('is_incidente_dinamico') else ""
+                dur = f" | Duração: {tk['duracao_estimada']}" if tk.get('duracao_estimada') else ""
+                lines.append(f"- [{tk['status'].upper()}]{inc} {tk['titulo']} (ID: {tk['id']}) | Progresso: {prog}{dur} - {tk.get('descricao', '')}")
+            lines.append("")
+
+        if allies:
+            lines.append("=== IMPÉRIOS E DIPLOMACIA (ALIADOS/RIVAIS) ===")
+            for al in allies:
+                lines.append(f"- {al['nome']} (Rei: {al['rei']}) | Status: {al['status_diplomatico']} | Relação: {al['relacionamento']}/100 | Poder Militar: {al.get('poder_militar', 'N/A')} | População: {al.get('populacao', 'N/A')}")
+            lines.append("")
 
         if characters:
             lines.append("=== PERSONAGENS & RECONHECIMENTO ===")

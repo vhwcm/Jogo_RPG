@@ -59,6 +59,15 @@ class VectorStore:
         self.conn.commit()
         return cursor.lastrowid
 
+    def update_memory_embedding(self, memory_id: int, embedding: List[float]):
+        emb_json = json.dumps(embedding or [])
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "UPDATE memories SET embedding_json = ? WHERE id = ?",
+            (emb_json, memory_id)
+        )
+        self.conn.commit()
+
     def search_memories(
         self,
         campaign_id: str,

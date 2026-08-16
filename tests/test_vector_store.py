@@ -37,3 +37,11 @@ def test_vector_store_character_filter(vector_db):
     memories = vs.search_memories("c1", character_filter="Marcus")
     assert len(memories) == 1
     assert "Marcus" in memories[0]["characters"]
+
+def test_vector_store_update_embedding(vector_db):
+    vs = VectorStore(vector_db)
+    mem_id = vs.add_memory("c1", turn_number=1, content="Evento teste", importance=0.7, embedding=[0.0, 0.0, 0.0])
+    vs.update_memory_embedding(mem_id, [1.0, 1.0, 1.0])
+    mems = vs.search_memories("c1", query_embedding=[1.0, 1.0, 1.0], top_k=1)
+    assert len(mems) == 1
+    assert mems[0]["embedding"] == [1.0, 1.0, 1.0]

@@ -73,3 +73,41 @@ def test_repository_characters_and_quests(temp_db):
     quests = repo.get_quests("c1")
     assert len(quests) == 1
     assert quests[0]["title"] == "Procurar Princesa"
+
+def test_repository_touch_campaign_and_sorting(temp_db):
+    repo = Repository(temp_db)
+    repo.create_campaign("c1", "Campanha Antiga")
+    repo.create_campaign("c2", "Campanha Recente")
+
+    temp_db.execute("UPDATE campaigns SET updated_at = '2020-01-01 00:00:00' WHERE id = 'c2'")
+    temp_db.execute("UPDATE campaigns SET updated_at = '2020-01-02 00:00:00' WHERE id = 'c1'")
+    temp_db.commit()
+
+    camps_reordered = repo.list_campaigns()
+    assert camps_reordered[0]["id"] == "c1"
+    assert camps_reordered[1]["id"] == "c2"
+
+    repo.touch_campaign("c2")
+    camps_after_touch = repo.list_campaigns()
+    assert camps_after_touch[0]["id"] == "c2"
+    assert camps_after_touch[1]["id"] == "c1"
+
+def test_migration_adds_updated_at(tmp_path):
+    import sqlite3
+    db_file = tmp_path / "old_schema.db"
+    conn = sqlite3.connect(str(db_file))
+    conn.execute("CREATE TABLE campaigns (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, summary TEXT DEFAULT '');")
+    conn.execute("INSERT INTO campaigns (id, name) VALUES ('old_1', 'Antiga');")
+    conn.commit()
+    conn.close()
+
+    migrated_conn = init_db(str(db_file))
+    cursor = migrated_conn.cursor()
+    cursor.execute("PRAGMA table_info(campaigns);")
+    columns = [row[1] for row in cursor.fetchall()]
+    assert "updated_at" in columns
+    repo = Repository(migrated_conn)
+    camps = repo.list_campaigns()
+    assert len(camps) == 1
+    assert camps[0]["id"] == "old_1"
+    migrated_conn.close()

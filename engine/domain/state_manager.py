@@ -1,6 +1,8 @@
 import uuid
-from typing import Dict, Any, List, Optional
-from engine.db.schema import init_db
+import math
+import concurrent.futures
+from typing import Dict, Any, List, Optional, Union
+from engine.db.schema import init_db, get_connection
 from engine.db.repository import Repository
 from engine.db.vector_store import VectorStore
 from engine.providers.base import BaseLLMProvider
@@ -8,7 +10,8 @@ from engine.providers.factory import LLMFactory
 from engine.memory.context_builder import ContextBuilder
 from engine.memory.importance import calculate_importance
 from engine.memory.summarizer import CampaignSummarizer
-from engine.domain.models import KingdomStatus, TurnResponse, CampaignInfo
+from engine.domain.models import KingdomStatus, TurnResponse, CampaignInfo, Item, Task, ImperioAliado, GameAction, MapNode, MapEdge
+from engine.utils import generate_fallback_embedding
 import config
 
 GAME_MASTER_SYSTEM_INSTRUCTION = """
@@ -42,8 +45,39 @@ Sua resposta deve ser APENAS um JSON válido seguindo exatamente este esquema:
     "religião": "Nome da Religião (String)",
     "poder_militar": 1000 (Inteiro),
     "felicidade": "70%" (String com %)
-  }
+  },
+  "actions": [
+    {
+      "action_type": "add_item | remove_item | add_structure | remove_structure | add_kingdom_asset | remove_kingdom_asset | create_task | update_task | add_ally | update_ally | add_map_node | update_map_node | remove_map_node | connect_map_nodes | disconnect_map_nodes",
+      "payload": { ... }
+    }
+  ]
 }
+
+### SISTEMA DE ACTIONS SUPORTADAS
+Sempre que eventos da história concederem itens, criaturas ou artefatos, ou quando o soberano construir/estabelecer estruturas e postos do reino (ex: posto avançado, santuário, quartel, muralha, mina, monumento), ou iniciar/atualizar tarefas de longo prazo, ou firmar/mudar relações diplomáticas, ou descobrir novos territórios/biomas no mapa, ou mobilizar tropas/rotas no mapa tático, emita itens na lista "actions":
+1. add_item / add_structure / add_kingdom_asset:
+   payload: {"id": "id_unico_str", "nome": "Nome do Item/Estrutura/Criatura", "categoria": "estrutura|santuario|posto_avancado|fortificacao|monumento|criatura|artefato|recurso|equipamento|outro", "descricao": "...", "atributos": {"chave": "valor"}}
+2. remove_item / remove_structure / remove_kingdom_asset:
+   payload: {"id": "id_do_item_ou_estrutura"}
+3. create_task:
+   payload: {"id": "id_da_task", "titulo": "Título da Missão", "descricao": "...", "status": "em_andamento|concluida|falhou|cancelada", "progresso": 0_a_100, "duracao_estimada": "3 turnos", "objetivo_esperado": "...", "is_incidente_dinamico": true_ou_false}
+4. update_task:
+   payload: {"id": "id_da_task", "status": "em_andamento|concluida|falhou|cancelada", "progresso": 0_a_100, "descricao": "..."}
+5. add_ally:
+   payload: {"id": "id_do_aliado", "nome": "Nome do Reino", "rei": "Nome do Soberano", "populacao": 25000, "poder_militar": 3000, "relacionamento": 50_a_100, "status_diplomatico": "hostil|neutro|amigavel|aliado|vassalo", "historico_notas": "..."}
+6. update_ally:
+   payload: {"id": "id_do_aliado", "relacionamento": -100_a_100, "status_diplomatico": "...", "historico_notas": "..."}
+7. add_map_node:
+   payload: {"id": "id_do_node", "label": "Nome do Ponto no Mapa", "node_type": "bioma|tropa|reino_vizinho|estrutura|santuario|fortificacao|mina|porto|ruina|vila", "emoji": "🌲|⚔️|👑|🏛️|✨|🛡️|⛏️|⚓|🏚️|🌾", "status": "ativo|descoberto|hostil|em_marcha", "metadata": {"tropas": 150, "dono": "Reino", "perigo": "Baixo"}, "connect_to": "id_do_node_pai_opcional", "edge_type": "estrada|fronteira|rota"}
+8. update_map_node:
+   payload: {"id": "id_do_node", "status": "...", "metadata": { ... }}
+9. remove_map_node:
+   payload: {"id": "id_do_node"}
+10. connect_map_nodes:
+   payload: {"source_node_id": "id_origem", "target_node_id": "id_destino", "edge_type": "estrada|fronteira|rota", "descricao": "..."}
+11. disconnect_map_nodes:
+   payload: {"source_node_id": "id_origem", "target_node_id": "id_destino"}
 
 ### EXEMPLOS DE FORMATO DE RESPOSTA (SMALL SHOTS / FEW-SHOT)
 Exemplo 1 (Turno Inicial - Escolha de Religião):
@@ -72,36 +106,65 @@ Exemplo 1 (Turno Inicial - Escolha de Religião):
     "religião": "Nenhuma",
     "poder_militar": 1000,
     "felicidade": "70%"
-  }
+  },
+  "actions": []
 }
 
-Exemplo 2 (Turno de Decisão Estratégica):
+Exemplo 2 (Turno com Recompensas, Ações e Atualização de Mapa):
 {
-  "aventura": "Sábia decisão, Vossa Majestade. Ao rejeitar o dogma em favor da Razão, Aurelia estabelece as fundações de uma nova era iluminada. As universidades começam a ser planejadas e os eruditos celebram vossa prudência.\\n\\nO que deseja fazer agora para fortalecer o reino de Aurelia?\\n1. Ordenar a construção da Grande Academia de Ciências para acelerar o progresso tecnológico.\\n2. Construir Centro de Treinamento Militar para fortalecer os guardas de fronteira.\\n3. Enviar exploradores para mapear as Terras Desconhecidas.",
-  "clima": "desenvolvimento",
+  "aventura": "Vossos batedores retornaram da expedição ao leste e mapearam a misteriosa Floresta dos Sussurros, além de despacharem uma guarnição militar para patrulhar a fronteira.\\n\\nQual vossa próxima ordem?\\n1. Estabelecer um posto avançado de observação na floresta.\\n2. Expandir o comércio com as vilas locais.\\n3. Recuar as tropas para a capital.",
+  "clima": "aventura",
   "opcoes": [
     {
-      "texto": "1. Ordenar a construção da Grande Academia de Ciências para acelerar o progresso tecnológico.",
-      "impacto": { "dinheiro": -500, "poder_militar": 0 }
+      "texto": "1. Estabelecer um posto avançado de observação na floresta.",
+      "impacto": { "dinheiro": -400, "poder_militar": 100 }
     },
     {
-      "texto": "2. Construir Centro de Treinamento Militar para fortalecer os guardas de fronteira.",
-      "impacto": { "dinheiro": -400, "poder_militar": 200 }
+      "texto": "2. Expandir o comércio com as vilas locais.",
+      "impacto": { "dinheiro": 250, "poder_militar": 0 }
     },
     {
-      "texto": "3. Enviar exploradores para mapear as Terras Desconhecidas.",
-      "impacto": { "dinheiro": null, "poder_militar": null }
+      "texto": "3. Recuar as tropas para a capital.",
+      "impacto": { "dinheiro": 0, "poder_militar": 0 }
     }
   ],
   "status_reino": {
     "nome_reino": "Aurelia",
     "imperador": "Arthur",
-    "dinheiro": 4500,
-    "populacao": 10200,
+    "dinheiro": 4600,
+    "populacao": 10100,
     "religião": "Estado Laico",
-    "poder_militar": 1200,
+    "poder_militar": 1100,
     "felicidade": "75%"
-  }
+  },
+  "actions": [
+    {
+      "action_type": "add_map_node",
+      "payload": {
+        "id": "node_floresta_sussurros",
+        "label": "Floresta dos Sussurros",
+        "node_type": "bioma",
+        "emoji": "🌲",
+        "status": "descoberto",
+        "metadata": { "perigo": "Médio", "recursos": "Madeira Rara" },
+        "connect_to": "node_capital",
+        "edge_type": "estrada"
+      }
+    },
+    {
+      "action_type": "add_map_node",
+      "payload": {
+        "id": "node_patrulha_leste",
+        "label": "1ª Legião em Patrulha",
+        "node_type": "tropa",
+        "emoji": "⚔️",
+        "status": "em_marcha",
+        "metadata": { "tropas": 200, "comandante": "Capitão Gareth" },
+        "connect_to": "node_floresta_sussurros",
+        "edge_type": "rota"
+      }
+    }
+  ]
 }
 
 ### REGRAS DE JOGO
@@ -111,8 +174,8 @@ Exemplo 2 (Turno de Decisão Estratégica):
 4. **Tom Majestic:** Use linguagem formal e imersiva ("Vossa Majestade", "Sua Graça").
 5. **Sem Emojis no Texto:** Mantenha a narrativa literária, elegante e imersiva. NÃO inclua emojis no texto narrativo.
 6. **Opções e Prévias OBRIGATÓRIAS:** Você DEVE sempre incluir o campo 'opcoes' como uma lista com exatamente 3 objetos. Cada objeto possui 'texto' e 'impacto' com 'dinheiro' (inteiro indicando variação ex: -500, 200 ou null se incerto) e 'poder_militar' (inteiro indicando variação ex: 200, -100 ou null se incerto em combates).
+7. **Actions Modulares:** Emita ações na chave 'actions' quando itens forem obtidos/perdidos, missões iniciadas/atualizadas, aliados adicionados/modificados ou elementos do mapa forem descobertos/alterados.
 """
-
 
 class GameEngine:
     def __init__(self, db_path: str = "", provider_name: Optional[str] = None):
@@ -123,12 +186,11 @@ class GameEngine:
         self.provider = LLMFactory.get_provider(provider_name)
         self.context_builder = ContextBuilder(self.repo, self.vector_store, self.provider)
         self.summarizer = CampaignSummarizer(self.provider)
-        # Isolated short-term memory per campaign_id
         self.short_term_memories: Dict[str, List[Dict[str, str]]] = {}
+        self._bg_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
 
     def _get_short_term_memory(self, campaign_id: str) -> List[Dict[str, str]]:
         if campaign_id not in self.short_term_memories:
-            # Reconstruct from recent vector store memories if available
             recent_mems = self.vector_store.get_recent_memories(campaign_id, limit=10)
             mem_list = []
             for m in reversed(recent_mems):
@@ -147,7 +209,80 @@ class GameEngine:
         self.repo.create_campaign(campaign_id, campaign_name)
         self.short_term_memories[campaign_id] = []
 
-        # Initial turn prompt
+        cap_id = "node_capital"
+        forest_id = "node_floresta_ancestral"
+        mount_id = "node_montanhas_ferro"
+        plains_id = "node_campos_dourados"
+
+        self.repo.upsert_map_node(
+            node_id=cap_id,
+            campaign_id=campaign_id,
+            label=f"Capital {kingdom_name}",
+            node_type="capital",
+            emoji="🏰",
+            x=0.0,
+            y=0.0,
+            status="ativo",
+            metadata={"dono": kingdom_name, "tipo": "Capital", "tropas": 500, "perigo": "Nenhum"}
+        )
+        self.repo.upsert_map_node(
+            node_id=forest_id,
+            campaign_id=campaign_id,
+            label="Floresta Ancestral",
+            node_type="bioma",
+            emoji="🌲",
+            x=0.0,
+            y=-180.0,
+            status="descoberto",
+            metadata={"tipo": "Floresta", "perigo": "Baixo", "recursos": "Madeira e Ervas"}
+        )
+        self.repo.upsert_map_node(
+            node_id=mount_id,
+            campaign_id=campaign_id,
+            label="Montanhas de Ferro",
+            node_type="bioma",
+            emoji="⛰️",
+            x=-190.0,
+            y=110.0,
+            status="descoberto",
+            metadata={"tipo": "Montanhas", "perigo": "Médio", "recursos": "Minério de Ferro"}
+        )
+        self.repo.upsert_map_node(
+            node_id=plains_id,
+            campaign_id=campaign_id,
+            label="Campos Dourados",
+            node_type="bioma",
+            emoji="🌾",
+            x=190.0,
+            y=110.0,
+            status="descoberto",
+            metadata={"tipo": "Planície Fértil", "perigo": "Nenhum", "recursos": "Alimento"}
+        )
+        self.repo.upsert_map_edge(
+            edge_id="edge_cap_forest",
+            campaign_id=campaign_id,
+            source_node_id=cap_id,
+            target_node_id=forest_id,
+            edge_type="estrada",
+            descricao="Estrada Real do Norte"
+        )
+        self.repo.upsert_map_edge(
+            edge_id="edge_cap_mount",
+            campaign_id=campaign_id,
+            source_node_id=cap_id,
+            target_node_id=mount_id,
+            edge_type="estrada",
+            descricao="Trilha dos Mineradores"
+        )
+        self.repo.upsert_map_edge(
+            edge_id="edge_cap_plains",
+            campaign_id=campaign_id,
+            source_node_id=cap_id,
+            target_node_id=plains_id,
+            edge_type="estrada",
+            descricao="Rota Comercial Agrícola"
+        )
+
         initial_user_prompt = (
             f"INÍCIO DE CAMPANHA: Criar reino '{kingdom_name}' de raça '{race}', governado pelo Imperador(a) '{ruler_name}'. "
             f"O reino começa sem religião oficial ('Nenhuma'). A PRIMEIRA pergunta/decisão apresentada ao Imperador "
@@ -185,7 +320,6 @@ class GameEngine:
 
         st_memory = self._get_short_term_memory(campaign_id)
 
-        # Build Context with RAG & Short-Term
         context = self.context_builder.build_prompt_context(campaign_id, player_action, st_memory)
 
         response_json = self.provider.generate_json(
@@ -204,6 +338,224 @@ class GameEngine:
             response_json=response_json
         )
         return turn_resp
+
+    def apply_actions(self, campaign_id: str, actions: List[GameAction], turn_number: int):
+        for act in actions:
+            action_type = act.action_type
+            payload = act.payload or {}
+
+            if action_type in ["add_item", "add_structure", "add_kingdom_asset"]:
+                item_id = payload.get("id") or f"asset_{turn_number}_{str(uuid.uuid4())[:6]}"
+                nome = payload.get("nome", "Ativo do Reino")
+                default_cat = "estrutura" if "structure" in action_type else "outro"
+                categoria = payload.get("categoria", default_cat)
+                descricao = payload.get("descricao", "")
+                atributos = payload.get("atributos", {})
+                adquirido_no_turno = payload.get("adquirido_no_turno", turn_number)
+                self.repo.upsert_campaign_item(
+                    item_id=item_id,
+                    campaign_id=campaign_id,
+                    nome=nome,
+                    categoria=categoria,
+                    descricao=descricao,
+                    atributos=atributos,
+                    adquirido_no_turno=adquirido_no_turno
+                )
+
+            elif action_type in ["remove_item", "remove_structure", "remove_kingdom_asset"]:
+                item_id = payload.get("id") or payload.get("nome")
+                if item_id:
+                    self.repo.delete_campaign_item(str(item_id), campaign_id)
+
+            elif action_type == "create_task":
+                task_id = payload.get("id") or f"task_{turn_number}_{str(uuid.uuid4())[:6]}"
+                titulo = payload.get("titulo", "Nova Tarefa")
+                descricao = payload.get("descricao", "")
+                status = payload.get("status", "em_andamento")
+                progresso = payload.get("progresso")
+                duracao_estimada = payload.get("duracao_estimada")
+                objetivo_esperado = payload.get("objetivo_esperado")
+                is_incidente = payload.get("is_incidente_dinamico", False) or payload.get("is_incidente", False)
+                criada_no_turno = payload.get("criada_no_turno", turn_number)
+                self.repo.upsert_campaign_task(
+                    task_id=task_id,
+                    campaign_id=campaign_id,
+                    titulo=titulo,
+                    descricao=descricao,
+                    status=status,
+                    progresso=progresso,
+                    duracao_estimada=duracao_estimada,
+                    objetivo_esperado=objetivo_esperado,
+                    is_incidente=is_incidente,
+                    criada_no_turno=criada_no_turno
+                )
+
+            elif action_type == "update_task":
+                task_id = payload.get("id") or payload.get("titulo")
+                if task_id:
+                    existing_tasks = self.repo.get_campaign_tasks(campaign_id)
+                    matched = [t for t in existing_tasks if t["id"] == str(task_id) or t["titulo"] == str(task_id)]
+                    if matched:
+                        target = matched[0]
+                        self.repo.upsert_campaign_task(
+                            task_id=target["id"],
+                            campaign_id=campaign_id,
+                            titulo=payload.get("titulo", target["titulo"]),
+                            descricao=payload.get("descricao", target.get("descricao", "")),
+                            status=payload.get("status", target.get("status", "em_andamento")),
+                            progresso=payload.get("progresso", target.get("progresso")),
+                            duracao_estimada=payload.get("duracao_estimada", target.get("duracao_estimada")),
+                            objetivo_esperado=payload.get("objetivo_esperado", target.get("objetivo_esperado")),
+                            is_incidente=payload.get("is_incidente_dinamico", target.get("is_incidente_dinamico", False)),
+                            criada_no_turno=target.get("criada_no_turno", turn_number)
+                        )
+
+            elif action_type == "add_ally":
+                ally_id = payload.get("id") or f"ally_{turn_number}_{str(uuid.uuid4())[:6]}"
+                nome = payload.get("nome", "Reino Desconhecido")
+                rei = payload.get("rei", "Desconhecido")
+                populacao = payload.get("populacao", "10000")
+                poder_militar = payload.get("poder_militar", "1000")
+                relacionamento = payload.get("relacionamento", 50)
+                status_diplomatico = payload.get("status_diplomatico", "neutro")
+                historico_notas = payload.get("historico_notas")
+                self.repo.upsert_campaign_ally(
+                    ally_id=ally_id,
+                    campaign_id=campaign_id,
+                    nome=nome,
+                    rei=rei,
+                    populacao=populacao,
+                    poder_militar=poder_militar,
+                    relacionamento=relacionamento,
+                    status_diplomatico=status_diplomatico,
+                    historico_notas=historico_notas
+                )
+
+            elif action_type == "update_ally":
+                ally_id = payload.get("id") or payload.get("nome")
+                if ally_id:
+                    existing_allies = self.repo.get_campaign_allies(campaign_id)
+                    matched = [a for a in existing_allies if a["id"] == str(ally_id) or a["nome"] == str(ally_id)]
+                    if matched:
+                        target = matched[0]
+                        self.repo.upsert_campaign_ally(
+                            ally_id=target["id"],
+                            campaign_id=campaign_id,
+                            nome=payload.get("nome", target["nome"]),
+                            rei=payload.get("rei", target["rei"]),
+                            populacao=payload.get("populacao", target.get("populacao", "10000")),
+                            poder_militar=payload.get("poder_militar", target.get("poder_militar", "1000")),
+                            relacionamento=payload.get("relacionamento", target.get("relacionamento", 50)),
+                            status_diplomatico=payload.get("status_diplomatico", target.get("status_diplomatico", "neutro")),
+                            historico_notas=payload.get("historico_notas", target.get("historico_notas"))
+                        )
+
+            elif action_type == "add_map_node":
+                node_id = payload.get("id") or f"node_{turn_number}_{str(uuid.uuid4())[:6]}"
+                label = payload.get("label") or payload.get("nome", "Ponto Estratégico")
+                node_type = payload.get("node_type", "estrutura")
+                
+                default_emojis = {
+                    "capital": "🏰", "bioma": "🌲", "floresta": "🌲", "montanha": "⛰️",
+                    "mina": "⛏️", "vila": "🌾", "fazenda": "🌾", "tropa": "⚔️",
+                    "exercito": "⚔️", "patrulha": "🛡️", "reino_vizinho": "👑", "aliado": "👑",
+                    "estrutura": "🏛️", "fortificacao": "🛡️", "posto_avancado": "🏹",
+                    "santuario": "✨", "templo": "⛪", "porto": "⚓", "mar": "🌊",
+                    "ruina": "🏚️", "caverna": "🕳️"
+                }
+                emoji = payload.get("emoji") or default_emojis.get(node_type.lower(), "📍")
+                
+                x = payload.get("x")
+                y = payload.get("y")
+                if x is None or y is None:
+                    existing_nodes = self.repo.get_map_nodes(campaign_id)
+                    count = len(existing_nodes)
+                    angle = (count * 0.897) + 0.3
+                    radius = 160.0 + ((count // 6) * 110.0)
+                    x = round(radius * math.cos(angle), 1)
+                    y = round(radius * math.sin(angle), 1)
+
+                status_node = payload.get("status", "ativo")
+                metadata = payload.get("metadata", {})
+                if not isinstance(metadata, dict):
+                    metadata = {"detalhes": str(metadata)}
+
+                self.repo.upsert_map_node(
+                    node_id=node_id,
+                    campaign_id=campaign_id,
+                    label=label,
+                    node_type=node_type,
+                    emoji=emoji,
+                    x=float(x),
+                    y=float(y),
+                    status=status_node,
+                    metadata=metadata
+                )
+
+                connect_to = payload.get("connect_to") or payload.get("parent_node_id")
+                if connect_to:
+                    edge_id = f"edge_{node_id}_{connect_to}_{str(uuid.uuid4())[:4]}"
+                    edge_type = payload.get("edge_type", "estrada")
+                    desc = payload.get("edge_desc", payload.get("descricao", "Rota Conectada"))
+                    self.repo.upsert_map_edge(
+                        edge_id=edge_id,
+                        campaign_id=campaign_id,
+                        source_node_id=str(connect_to),
+                        target_node_id=str(node_id),
+                        edge_type=edge_type,
+                        descricao=desc
+                    )
+
+            elif action_type == "update_map_node":
+                node_id = payload.get("id") or payload.get("label")
+                if node_id:
+                    existing_nodes = self.repo.get_map_nodes(campaign_id)
+                    matched = [n for n in existing_nodes if n["id"] == str(node_id) or n["label"] == str(node_id)]
+                    if matched:
+                        target = matched[0]
+                        updated_metadata = {**target.get("metadata", {}), **payload.get("metadata", {})}
+                        self.repo.upsert_map_node(
+                            node_id=target["id"],
+                            campaign_id=campaign_id,
+                            label=payload.get("label", target["label"]),
+                            node_type=payload.get("node_type", target.get("node_type", "estrutura")),
+                            emoji=payload.get("emoji", target.get("emoji", "📍")),
+                            x=float(payload.get("x", target["x"])),
+                            y=float(payload.get("y", target["y"])),
+                            status=payload.get("status", target.get("status", "ativo")),
+                            metadata=updated_metadata
+                        )
+
+            elif action_type == "remove_map_node":
+                node_id = payload.get("id") or payload.get("label")
+                if node_id:
+                    self.repo.delete_map_node(str(node_id), campaign_id)
+
+            elif action_type in ["connect_map_nodes", "add_map_edge"]:
+                source = payload.get("source_node_id") or payload.get("source")
+                target = payload.get("target_node_id") or payload.get("target")
+                if source and target:
+                    edge_id = payload.get("id") or f"edge_{source}_{target}_{str(uuid.uuid4())[:4]}"
+                    edge_type = payload.get("edge_type", "estrada")
+                    descricao = payload.get("descricao", "")
+                    self.repo.upsert_map_edge(
+                        edge_id=edge_id,
+                        campaign_id=campaign_id,
+                        source_node_id=str(source),
+                        target_node_id=str(target),
+                        edge_type=edge_type,
+                        descricao=descricao
+                    )
+
+            elif action_type in ["disconnect_map_nodes", "remove_map_edge"]:
+                edge_id = payload.get("id")
+                if edge_id:
+                    self.repo.delete_map_edge(str(edge_id), campaign_id)
+                else:
+                    source = payload.get("source_node_id") or payload.get("source")
+                    target = payload.get("target_node_id") or payload.get("target")
+                    if source and target:
+                        self.repo.delete_map_edge_between(campaign_id, str(source), str(target))
 
     def _process_turn_response(
         self,
@@ -234,8 +586,8 @@ class GameEngine:
             felicidade=str(status_dict.get("felicidade", "70%"))
         )
 
-        # 1. Save Structured World State to SQLite3
         response_json["user_action"] = user_action
+        self.repo.touch_campaign(campaign_id)
         self.repo.save_world_state(
             campaign_id=campaign_id,
             turn_number=turn_number,
@@ -250,27 +602,66 @@ class GameEngine:
             raw_state_json=response_json
         )
 
-        # 2. Add turn to Episodic Vector RAG Memory
         memory_text = f"Turno {turn_number}: Jogador ordenou '{user_action}'. Consequência: {narrative[:300]}"
         importance = calculate_importance(memory_text)
-        embedding = self.provider.generate_embedding(memory_text)
+        fallback_emb = generate_fallback_embedding(memory_text)
 
-        self.vector_store.add_memory(
+        mem_id = self.vector_store.add_memory(
             campaign_id=campaign_id,
             turn_number=turn_number,
             content=memory_text,
             importance=importance,
             event_type="turn",
-            embedding=embedding
+            embedding=fallback_emb
         )
 
-        # 3. Short term memory management (per campaign)
+        def _bg_async_task(db_path_val, camp_id_val, turn_num_val, mem_id_val, mem_text_val, provider_inst, summarizer_inst):
+            try:
+                real_emb = provider_inst.generate_embedding(mem_text_val)
+                if real_emb:
+                    conn_bg = get_connection(db_path_val)
+                    vstore_bg = VectorStore(conn_bg)
+                    vstore_bg.update_memory_embedding(mem_id_val, real_emb)
+                    if turn_num_val % config.SUMMARY_INTERVAL_TURNS == 0:
+                        repo_bg = Repository(conn_bg)
+                        recents = vstore_bg.get_recent_memories(camp_id_val, limit=config.SUMMARY_INTERVAL_TURNS)
+                        camp = repo_bg.get_campaign(camp_id_val) or {}
+                        prev_summary = camp.get("summary", "")
+                        new_summary = summarizer_inst.summarize_turns(prev_summary, recents)
+                        repo_bg.update_campaign_summary(camp_id_val, new_summary)
+                    conn_bg.close()
+            except Exception:
+                pass
+
+        self._bg_executor.submit(
+            _bg_async_task,
+            self.db_path,
+            campaign_id,
+            turn_number,
+            mem_id,
+            memory_text,
+            self.provider,
+            self.summarizer
+        )
+
         st_mem = self._get_short_term_memory(campaign_id)
         st_mem.append({"user": user_action, "narrative": narrative})
         if len(st_mem) > 10:
             st_mem.pop(0)
 
-        # 4. Optional entity updates from LLM JSON response
+        raw_actions = response_json.get("actions", [])
+        parsed_actions: List[GameAction] = []
+        if isinstance(raw_actions, list):
+            for act in raw_actions:
+                if isinstance(act, dict) and "action_type" in act:
+                    parsed_actions.append(GameAction(
+                        action_type=act["action_type"],
+                        payload=act.get("payload", {})
+                    ))
+
+        if parsed_actions:
+            self.apply_actions(campaign_id, parsed_actions, turn_number)
+
         if "personagens" in response_json and isinstance(response_json["personagens"], list):
             for idx, c in enumerate(response_json["personagens"]):
                 if isinstance(c, dict) and "nome" in c:
@@ -311,17 +702,6 @@ class GameEngine:
                         properties=item.get("propriedades", {})
                     )
 
-        # 5. Periodic Chapter Summarizer
-        if turn_number % config.SUMMARY_INTERVAL_TURNS == 0:
-            try:
-                recents = self.vector_store.get_recent_memories(campaign_id, limit=config.SUMMARY_INTERVAL_TURNS)
-                camp = self.repo.get_campaign(campaign_id) or {}
-                prev_summary = camp.get("summary", "")
-                new_summary = self.summarizer.summarize_turns(prev_summary, recents)
-                self.repo.update_campaign_summary(campaign_id, new_summary)
-            except Exception as e:
-                print(f"Warning: Campaign summarizer failed ({e})")
-
         raw_clima = response_json.get("clima") or response_json.get("tema") or response_json.get("trilha_sonora") or ""
         clima = self._infer_clima(raw_clima, narrative)
         opcoes = self._extract_opcoes(response_json, narrative)
@@ -331,11 +711,20 @@ class GameEngine:
             status_reino=status,
             clima=clima,
             opcoes=opcoes,
+            actions=parsed_actions,
             raw_json=response_json
         )
 
+    def get_campaign_state_details(self, campaign_id: str) -> Dict[str, Any]:
+        return {
+            "items": self.repo.get_campaign_items(campaign_id),
+            "tasks": self.repo.get_campaign_tasks(campaign_id),
+            "allies": self.repo.get_campaign_allies(campaign_id),
+            "map_nodes": self.repo.get_map_nodes(campaign_id),
+            "map_edges": self.repo.get_map_edges(campaign_id)
+        }
+
     def estimate_action_impact(self, campaign_id: str, action_text: str) -> Dict[str, Any]:
-        """Estimate the expected cost/gain for a custom free-text action before execution."""
         latest_ws = self.repo.get_latest_world_state(campaign_id)
         current_gold = latest_ws["gold"] if latest_ws else 5000
         current_military = latest_ws["military"] if latest_ws else 1000
@@ -412,16 +801,13 @@ Sua resposta deve ser APENAS um JSON válido no formato:
         return "aventura"
 
     def rollback_turn(self, campaign_id: str, target_turn: int) -> TurnResponse:
-        """Rollback campaign state to a specific turn number."""
         target_ws = self.repo.get_world_state_at_turn(campaign_id, target_turn)
         if not target_ws:
             raise ValueError(f"Turno {target_turn} não encontrado para a campanha '{campaign_id}'.")
 
-        # Trim states and RAG memories after target_turn
         self.repo.delete_world_states_after_turn(campaign_id, target_turn)
         self.repo.delete_memories_after_turn(campaign_id, target_turn)
 
-        # Reset short-term memory for this campaign
         if campaign_id in self.short_term_memories:
             del self.short_term_memories[campaign_id]
 
@@ -451,30 +837,32 @@ Sua resposta deve ser APENAS um JSON válido no formato:
             status_reino=status,
             clima=clima,
             opcoes=opcoes,
+            actions=[],
             raw_json=raw_json
         )
 
     def delete_campaign(self, campaign_id: str) -> bool:
-        """Completely delete a campaign and all related states."""
         if campaign_id in self.short_term_memories:
             del self.short_term_memories[campaign_id]
         return self.repo.delete_campaign(campaign_id)
 
     def get_campaign_history(self, campaign_id: str) -> List[Dict[str, Any]]:
-        """Get step-by-step history of world states across turns."""
         return self.repo.get_world_state_history(campaign_id)
 
     def get_campaign_entities(self, campaign_id: str) -> Dict[str, Any]:
-        """Get all registered game entities (characters, quests, items, locations)."""
         return {
             "characters": self.repo.get_characters(campaign_id),
             "quests": self.repo.get_quests(campaign_id),
             "items": self.repo.get_items(campaign_id),
-            "locations": self.repo.get_locations(campaign_id)
+            "locations": self.repo.get_locations(campaign_id),
+            "campaign_items": self.repo.get_campaign_items(campaign_id),
+            "campaign_tasks": self.repo.get_campaign_tasks(campaign_id),
+            "campaign_allies": self.repo.get_campaign_allies(campaign_id),
+            "map_nodes": self.repo.get_map_nodes(campaign_id),
+            "map_edges": self.repo.get_map_edges(campaign_id)
         }
 
     def export_campaign(self, campaign_id: str) -> Dict[str, Any]:
-        """Export full campaign savegame payload to JSON-serializable dict."""
         camp = self.repo.get_campaign(campaign_id)
         if not camp:
             raise ValueError(f"Campanha '{campaign_id}' não encontrada.")
@@ -492,19 +880,16 @@ Sua resposta deve ser APENAS um JSON válido no formato:
         }
 
     def import_campaign(self, campaign_data: Dict[str, Any]) -> str:
-        """Import full campaign savegame payload from JSON dict."""
         camp_meta = campaign_data.get("campaign")
         if not camp_meta or "name" not in camp_meta:
             raise ValueError("Payload de importação inválido: dados da campanha ausentes.")
 
         campaign_id = camp_meta.get("id") or str(uuid.uuid4())[:8]
-        # Clean existing if present
         self.repo.delete_campaign(campaign_id)
         self.repo.create_campaign(campaign_id, camp_meta["name"])
         if camp_meta.get("summary"):
             self.repo.update_campaign_summary(campaign_id, camp_meta["summary"])
 
-        # Import world states
         for ws in campaign_data.get("world_states", []):
             self.repo.save_world_state(
                 campaign_id=campaign_id,
@@ -520,7 +905,6 @@ Sua resposta deve ser APENAS um JSON válido no formato:
                 raw_state_json=ws.get("raw_state", {})
             )
 
-        # Import entities
         entities = campaign_data.get("entities", {})
         for char in entities.get("characters", []):
             self.repo.upsert_character(
@@ -560,7 +944,63 @@ Sua resposta deve ser APENAS um JSON válido no formato:
                 control_faction=loc.get("control_faction", "Player")
             )
 
-        # Import memories
+        for ci in entities.get("campaign_items", []):
+            self.repo.upsert_campaign_item(
+                item_id=ci["id"],
+                campaign_id=campaign_id,
+                nome=ci["nome"],
+                categoria=ci.get("categoria", "outro"),
+                descricao=ci.get("descricao", ""),
+                atributos=ci.get("atributos", {}),
+                adquirido_no_turno=ci.get("adquirido_no_turno", 1)
+            )
+        for ct in entities.get("campaign_tasks", []):
+            self.repo.upsert_campaign_task(
+                task_id=ct["id"],
+                campaign_id=campaign_id,
+                titulo=ct["titulo"],
+                descricao=ct.get("descricao", ""),
+                status=ct.get("status", "em_andamento"),
+                progresso=ct.get("progresso"),
+                duracao_estimada=ct.get("duracao_estimada"),
+                objetivo_esperado=ct.get("objetivo_esperado"),
+                is_incidente=ct.get("is_incidente_dinamico", False) or ct.get("is_incidente", False),
+                criada_no_turno=ct.get("criada_no_turno", 1)
+            )
+        for ca in entities.get("campaign_allies", []):
+            self.repo.upsert_campaign_ally(
+                ally_id=ca["id"],
+                campaign_id=campaign_id,
+                nome=ca["nome"],
+                rei=ca["rei"],
+                populacao=ca.get("populacao", "10000"),
+                poder_militar=ca.get("poder_militar", "1000"),
+                relacionamento=ca.get("relacionamento", 50),
+                status_diplomatico=ca.get("status_diplomatico", "neutro"),
+                historico_notas=ca.get("historico_notas")
+            )
+        for mn in entities.get("map_nodes", []):
+            self.repo.upsert_map_node(
+                node_id=mn["id"],
+                campaign_id=campaign_id,
+                label=mn["label"],
+                node_type=mn.get("node_type", "estrutura"),
+                emoji=mn.get("emoji", "📍"),
+                x=mn.get("x", 0.0),
+                y=mn.get("y", 0.0),
+                status=mn.get("status", "ativo"),
+                metadata=mn.get("metadata", {})
+            )
+        for me in entities.get("map_edges", []):
+            self.repo.upsert_map_edge(
+                edge_id=me["id"],
+                campaign_id=campaign_id,
+                source_node_id=me["source_node_id"],
+                target_node_id=me["target_node_id"],
+                edge_type=me.get("edge_type", "estrada"),
+                descricao=me.get("descricao", "")
+            )
+
         for mem in campaign_data.get("memories", []):
             self.vector_store.add_memory(
                 campaign_id=campaign_id,
@@ -578,6 +1018,7 @@ Sua resposta deve ser APENAS um JSON válido no formato:
         if not camp:
             return None
 
+        self.repo.touch_campaign(campaign_id)
         latest_ws = self.repo.get_latest_world_state(campaign_id)
         status = None
         turn_num = 0
@@ -605,4 +1046,3 @@ Sua resposta deve ser APENAS um JSON válido no formato:
 
     def list_campaigns(self) -> List[Dict[str, Any]]:
         return self.repo.list_campaigns()
-

@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     summary TEXT DEFAULT ''
 );
 """
@@ -99,6 +100,84 @@ CREATE TABLE IF NOT EXISTS memories (
 );
 """
 
+CREATE_CAMPAIGN_ITEMS_TABLE = """
+CREATE TABLE IF NOT EXISTS campaign_items (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    nome TEXT NOT NULL,
+    categoria TEXT DEFAULT 'outro',
+    descricao TEXT DEFAULT '',
+    atributos_json TEXT DEFAULT '{}',
+    adquirido_no_turno INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+"""
+
+CREATE_CAMPAIGN_TASKS_TABLE = """
+CREATE TABLE IF NOT EXISTS campaign_tasks (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    titulo TEXT NOT NULL,
+    descricao TEXT DEFAULT '',
+    status TEXT DEFAULT 'em_andamento',
+    progresso INTEGER,
+    duracao_estimada TEXT,
+    objetivo_esperado TEXT,
+    is_incidente INTEGER DEFAULT 0,
+    criada_no_turno INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+"""
+
+CREATE_CAMPAIGN_ALLIES_TABLE = """
+CREATE TABLE IF NOT EXISTS campaign_allies (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    nome TEXT NOT NULL,
+    rei TEXT NOT NULL,
+    populacao TEXT DEFAULT '10000',
+    poder_militar TEXT DEFAULT '1000',
+    relacionamento INTEGER DEFAULT 50,
+    status_diplomatico TEXT DEFAULT 'neutro',
+    historico_notas TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+"""
+
+CREATE_CAMPAIGN_MAP_NODES_TABLE = """
+CREATE TABLE IF NOT EXISTS campaign_map_nodes (
+    id TEXT NOT NULL,
+    campaign_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    node_type TEXT DEFAULT 'estrutura',
+    emoji TEXT DEFAULT '📍',
+    x REAL DEFAULT 0.0,
+    y REAL DEFAULT 0.0,
+    status TEXT DEFAULT 'ativo',
+    metadata_json TEXT DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id, campaign_id),
+    FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+"""
+
+CREATE_CAMPAIGN_MAP_EDGES_TABLE = """
+CREATE TABLE IF NOT EXISTS campaign_map_edges (
+    id TEXT NOT NULL,
+    campaign_id TEXT NOT NULL,
+    source_node_id TEXT NOT NULL,
+    target_node_id TEXT NOT NULL,
+    edge_type TEXT DEFAULT 'estrada',
+    descricao TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id, campaign_id),
+    FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+"""
+
 def get_connection(db_path: str) -> sqlite3.Connection:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -118,11 +197,21 @@ def init_db(db_path: str) -> sqlite3.Connection:
         conn.execute(CREATE_ITEMS_TABLE)
         conn.execute(CREATE_LOCATIONS_TABLE)
         conn.execute(CREATE_MEMORIES_TABLE)
+        conn.execute(CREATE_CAMPAIGN_ITEMS_TABLE)
+        conn.execute(CREATE_CAMPAIGN_TASKS_TABLE)
+        conn.execute(CREATE_CAMPAIGN_ALLIES_TABLE)
+        conn.execute(CREATE_CAMPAIGN_MAP_NODES_TABLE)
+        conn.execute(CREATE_CAMPAIGN_MAP_EDGES_TABLE)
 
-        # Migration check for population column in existing databases
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(world_state);")
         columns = [row[1] for row in cursor.fetchall()]
         if columns and "population" not in columns:
             conn.execute("ALTER TABLE world_state ADD COLUMN population INTEGER DEFAULT 10000;")
+
+        cursor.execute("PRAGMA table_info(campaigns);")
+        camp_columns = [row[1] for row in cursor.fetchall()]
+        if camp_columns and "updated_at" not in camp_columns:
+            conn.execute("ALTER TABLE campaigns ADD COLUMN updated_at TIMESTAMP;")
+            conn.execute("UPDATE campaigns SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP) WHERE updated_at IS NULL;")
     return conn

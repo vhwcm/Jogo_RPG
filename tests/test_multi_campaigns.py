@@ -125,3 +125,40 @@ def test_api_multi_campaign_switching_and_history():
     ids_after = [c["id"] for c in camps_after]
     assert camp_a["id"] not in ids_after
     assert camp_b["id"] in ids_after
+
+def test_api_campaign_open_updates_timestamp_and_order():
+    resp_x = client.post("/api/campaigns", json={
+        "campaign_name": "Aventura X",
+        "ruler_name": "Rei X",
+        "kingdom_name": "Reino X",
+        "race": "Humano",
+        "provider": "mock_fallback"
+    })
+    assert resp_x.status_code == 200
+
+    resp_y = client.post("/api/campaigns", json={
+        "campaign_name": "Aventura Y",
+        "ruler_name": "Rei Y",
+        "kingdom_name": "Reino Y",
+        "race": "Anão",
+        "provider": "mock_fallback"
+    })
+    assert resp_y.status_code == 200
+
+    camps = client.get("/api/campaigns").json()
+    camp_x = [c for c in camps if c["name"] == "Aventura X"][0]
+    camp_y = [c for c in camps if c["name"] == "Aventura Y"][0]
+
+    assert camps[0]["id"] == camp_y["id"]
+
+    import time
+    time.sleep(1)
+
+    info_x_resp = client.get(f"/api/campaigns/{camp_x['id']}")
+    assert info_x_resp.status_code == 200
+
+    camps_reordered = client.get("/api/campaigns").json()
+    assert camps_reordered[0]["id"] == camp_x["id"]
+
+    client.delete(f"/api/campaigns/{camp_x['id']}")
+    client.delete(f"/api/campaigns/{camp_y['id']}")
