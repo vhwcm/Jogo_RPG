@@ -382,8 +382,9 @@ def test_place_asset_on_map_and_orbital_distribution(test_engine):
 
 def test_api_place_and_unplace_asset_endpoints():
     client = TestClient(app)
+    camp_name = f"Campanha API Ativos Mapa {uuid.uuid4().hex[:6]}"
     create_resp = client.post("/api/campaigns", json={
-        "campaign_name": "Campanha API Ativos Mapa",
+        "campaign_name": camp_name,
         "ruler_name": "Imperatriz Luna",
         "kingdom_name": "Lunaria",
         "race": "Humano",
@@ -391,7 +392,7 @@ def test_api_place_and_unplace_asset_endpoints():
     })
     assert create_resp.status_code == 200
     all_camps = client.get("/api/campaigns").json()
-    matched = [c for c in all_camps if c.get("name") == "Campanha API Ativos Mapa"]
+    matched = [c for c in all_camps if c.get("name") == camp_name]
     assert len(matched) > 0
     cid = matched[0]["id"]
 
