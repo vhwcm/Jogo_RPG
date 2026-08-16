@@ -161,7 +161,23 @@ const TacticalMap = {
 
     setData(nodes, edges) {
         const nodesMap = new Map();
-        (nodes || []).forEach(n => {
+        const capNode = (nodes || []).find(n => n.id === 'node_capital' || (n.node_type || '').toLowerCase() === 'capital');
+        const capNorm = capNode ? (capNode.label || '').toLowerCase().replace(/[\(\)]/g, '').replace('capital', '').trim() : '';
+
+        const sanitizedNodes = (nodes || []).filter(n => {
+            if (n.id === 'node_capital') return true;
+            if (capNode && n.id !== capNode.id) {
+                const nt = (n.node_type || '').toLowerCase();
+                const lbl = (n.label || n.nome || '').toLowerCase().replace(/[\(\)]/g, '').trim();
+                if (nt === 'capital') return false;
+                if (nt === 'reino_vizinho' && capNorm && (lbl === capNorm || lbl === `capital ${capNorm}` || lbl === `${capNorm} capital` || lbl === `reino de ${capNorm}` || lbl === `reino ${capNorm}`)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+
+        sanitizedNodes.forEach(n => {
             const existing = this.nodes.find(old => old.id === n.id);
             const nt = (n.node_type || 'estrutura').toLowerCase();
             const rawSize = (n.size || (n.metadata && n.metadata.size) || '').toLowerCase();
@@ -193,7 +209,8 @@ const TacticalMap = {
         });
 
         this.nodes = Array.from(nodesMap.values());
-        this.edges = (edges || []).map(e => ({
+        const validNodeIds = new Set(this.nodes.map(n => n.id));
+        this.edges = (edges || []).filter(e => validNodeIds.has(e.source_node_id) && validNodeIds.has(e.target_node_id)).map(e => ({
             id: e.id,
             source_node_id: e.source_node_id,
             target_node_id: e.target_node_id,

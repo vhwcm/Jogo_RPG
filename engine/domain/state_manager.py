@@ -99,6 +99,7 @@ Sempre que eventos da história concederem itens, criaturas ou artefatos, ou qua
    - O universo do jogo possui 19 raças canônicas: Humano, Elfo, Anão, Orc, Centauro, Demônio, Djinn, Dragão, Elemental, Fauno, Gnomo, Goblin, Leprechaun, Mago, Morto Vivo, Rinoceronte, Sereia, Trol, Vampiro.
    - O reino do jogador possui sua raça informada no contexto. Respeite suas características e cultura.
    - Ao introduzir, gerar ou interagir com um NOVO império inimigo, reino rival, vizinho ou facção externa (na narrativa ou via action 'add_ally'), você DEVE OBRIGATORIAMENTE escolher uma das raças canônicas disponíveis e preencher o campo 'raca' no payload da action 'add_ally'.
+10. **Grafo e Mapa do Reino:** O reino do jogador e sua capital ('node_capital') já residem centralizados no mapa (x=0, y=0). NUNCA emita 'add_ally' para o próprio reino do jogador e NUNCA emita 'add_map_node' com node_type 'reino_vizinho' ou 'capital' para o reino ou capital do jogador.
 """
 
 class GameEngine:
@@ -393,7 +394,56 @@ class GameEngine:
             y = round(radius * math.sin(angle), 1)
             return float(x), float(y)
 
+    def _is_player_kingdom_or_capital(self, text: str, kingdom_name: str, ruler_name: str = "") -> bool:
+        if not text:
+            return False
+        t = str(text).strip().lower()
+        k = (kingdom_name or "").strip().lower()
+        r = (ruler_name or "").strip().lower()
+        
+        if t in ["node_capital", "capital", "capital_node"]:
+            return True
+        if k:
+            if t == k:
+                return True
+            clean_t = t.replace("(", "").replace(")", "").strip()
+            if clean_t in [k, f"capital {k}", f"{k} capital", f"capital de {k}", f"capital do {k}", f"capital da {k}", f"reino {k}", f"reino de {k}", f"reino do {k}", f"reino da {k}"]:
+                return True
+            t_normalized = t.replace("_", " ")
+            if t_normalized in [k, f"capital {k}", f"{k} capital", f"node capital", f"node {k}"]:
+                return True
+            if t in [f"capital_{k}", f"node_{k}", f"node_capital_{k}"]:
+                return True
+        if r and (t == r or t in [f"rei {r}", f"rainha {r}", f"soberano {r}", f"imperador {r}"]):
+            return True
+        return False
+
+    def _cleanup_duplicate_capital_nodes(self, campaign_id: str):
+        latest_ws = self.repo.get_latest_world_state(campaign_id)
+        kingdom_name = latest_ws.get("kingdom_name", "") if latest_ws else ""
+        ruler_name = latest_ws.get("ruler_name", "") if latest_ws else ""
+        
+        nodes = self.repo.get_map_nodes(campaign_id)
+        for n in nodes:
+            nid = n.get("id")
+            ntype = str(n.get("node_type", "")).lower()
+            nlabel = n.get("label", "")
+            if nid != "node_capital":
+                if ntype == "capital" or self._is_player_kingdom_or_capital(nid, kingdom_name, ruler_name) or (ntype == "reino_vizinho" and self._is_player_kingdom_or_capital(nlabel, kingdom_name, ruler_name)):
+                    self.repo.delete_map_node(nid, campaign_id)
+        
+        allies = self.repo.get_campaign_allies(campaign_id)
+        for a in allies:
+            aid = a.get("id")
+            aname = a.get("nome", "")
+            if self._is_player_kingdom_or_capital(aid, kingdom_name, ruler_name) or self._is_player_kingdom_or_capital(aname, kingdom_name, ruler_name):
+                self.repo.delete_campaign_ally(aid, campaign_id)
+
     def apply_actions(self, campaign_id: str, actions: List[GameAction], turn_number: int, current_day: int = 1):
+        latest_ws = self.repo.get_latest_world_state(campaign_id)
+        kingdom_name = latest_ws.get("kingdom_name", "") if latest_ws else ""
+        ruler_name = latest_ws.get("ruler_name", "") if latest_ws else ""
+
         for act in actions:
             action_type = act.action_type
             payload = act.payload or {}
@@ -578,6 +628,8 @@ class GameEngine:
             elif action_type == "add_ally":
                 ally_id = payload.get("id") or f"ally_{turn_number}_{str(uuid.uuid4())[:6]}"
                 nome = payload.get("nome", "Reino Desconhecido")
+                if self._is_player_kingdom_or_capital(nome, kingdom_name, ruler_name) or self._is_player_kingdom_or_capital(ally_id, kingdom_name, ruler_name):
+                    continue
                 rei = payload.get("rei", "Desconhecido")
                 raca = payload.get("raca") or payload.get("race", "Humano")
                 populacao = payload.get("populacao", "10000")
@@ -636,6 +688,11 @@ class GameEngine:
             elif action_type == "update_ally":
                 ally_id = payload.get("id") or payload.get("nome")
                 if ally_id:
+                    if self._is_player_kingdom_or_capital(str(ally_id), kingdom_name, ruler_name):
+                        continue
+                    new_nome = payload.get("nome", "")
+                    if new_nome and self._is_player_kingdom_or_capital(new_nome, kingdom_name, ruler_name):
+                        continue
                     existing_allies = self.repo.get_campaign_allies(campaign_id)
                     matched = [a for a in existing_allies if a["id"] == str(ally_id) or a["nome"] == str(ally_id)]
                     if matched:
@@ -701,6 +758,37 @@ class GameEngine:
                 node_id = payload.get("id") or f"node_{turn_number}_{str(uuid.uuid4())[:6]}"
                 label = payload.get("label") or payload.get("nome", "Ponto Estratégico")
                 node_type = payload.get("node_type", "estrutura")
+                
+                is_capital_target = (
+                    str(node_id) == "node_capital" or 
+                    str(node_type).lower() == "capital" or 
+                    self._is_player_kingdom_or_capital(node_id, kingdom_name, ruler_name) or 
+                    self._is_player_kingdom_or_capital(label, kingdom_name, ruler_name)
+                )
+
+                if is_capital_target:
+                    status_node = payload.get("status", "ativo")
+                    metadata = payload.get("metadata", {})
+                    if not isinstance(metadata, dict):
+                        metadata = {}
+                    existing_nodes = self.repo.get_map_nodes(campaign_id)
+                    existing_cap = next((n for n in existing_nodes if n["id"] == "node_capital"), None)
+                    cap_meta = existing_cap.get("metadata", {}) if existing_cap else {}
+                    cap_meta.update(metadata)
+                    self.repo.upsert_map_node(
+                        node_id="node_capital",
+                        campaign_id=campaign_id,
+                        label=f"Capital {kingdom_name}" if kingdom_name else "Capital Imperial",
+                        node_type="capital",
+                        emoji="🏰",
+                        x=0.0,
+                        y=0.0,
+                        status=status_node or "ativo",
+                        size="mega",
+                        metadata=cap_meta
+                    )
+                    continue
+
                 node_size = self._infer_node_size(node_type, payload.get("size") or payload.get("tamanho_no"))
                 
                 default_emojis = {
@@ -752,6 +840,31 @@ class GameEngine:
             elif action_type == "update_map_node":
                 node_id = payload.get("id") or payload.get("label")
                 if node_id:
+                    is_capital_target = (
+                        str(node_id) == "node_capital" or 
+                        self._is_player_kingdom_or_capital(node_id, kingdom_name, ruler_name) or 
+                        self._is_player_kingdom_or_capital(payload.get("label", ""), kingdom_name, ruler_name)
+                    )
+                    if is_capital_target:
+                        existing_nodes = self.repo.get_map_nodes(campaign_id)
+                        existing_cap = next((n for n in existing_nodes if n["id"] == "node_capital"), None)
+                        cap_meta = existing_cap.get("metadata", {}) if existing_cap else {}
+                        if "metadata" in payload and isinstance(payload["metadata"], dict):
+                            cap_meta.update(payload["metadata"])
+                        self.repo.upsert_map_node(
+                            node_id="node_capital",
+                            campaign_id=campaign_id,
+                            label=f"Capital {kingdom_name}" if kingdom_name else "Capital Imperial",
+                            node_type="capital",
+                            emoji="🏰",
+                            x=0.0,
+                            y=0.0,
+                            status=payload.get("status", existing_cap.get("status", "ativo") if existing_cap else "ativo"),
+                            size="mega",
+                            metadata=cap_meta
+                        )
+                        continue
+
                     existing_nodes = self.repo.get_map_nodes(campaign_id)
                     matched = [n for n in existing_nodes if n["id"] == str(node_id) or n["label"] == str(node_id)]
                     if matched:
@@ -1020,6 +1133,7 @@ class GameEngine:
         )
 
     def get_campaign_state_details(self, campaign_id: str) -> Dict[str, Any]:
+        self._cleanup_duplicate_capital_nodes(campaign_id)
         return {
             "items": self.repo.get_campaign_items(campaign_id),
             "tasks": self.repo.get_campaign_tasks(campaign_id),

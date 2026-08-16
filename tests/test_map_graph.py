@@ -420,3 +420,90 @@ def test_api_place_and_unplace_asset_endpoints(test_engine):
     finally:
         server.app.engine = orig_engine
 
+def test_prevent_player_kingdom_as_neighbor_or_duplicate_capital(test_engine):
+    turn = test_engine.create_campaign(
+        campaign_name="Reino dos Centauros",
+        ruler_name="Arthur Pendragon",
+        kingdom_name="Valdrin",
+        race="Centauro"
+    )
+    cid = test_engine.list_campaigns()[0]["id"]
+
+    actions = [
+        GameAction(
+            action_type="add_ally",
+            payload={
+                "id": "ally_valdrin",
+                "nome": "Valdrin (Capital)",
+                "rei": "Arthur Pendragon",
+                "raca": "Centauro"
+            }
+        ),
+        GameAction(
+            action_type="add_map_node",
+            payload={
+                "id": "capital_valdrin",
+                "label": "Valdrin (Capital)",
+                "node_type": "reino_vizinho",
+                "emoji": "👑",
+                "metadata": {"tropas": 1000, "dono": "Valdrin"}
+            }
+        ),
+        GameAction(
+            action_type="add_map_node",
+            payload={
+                "id": "node_capital_duplicate",
+                "label": "Capital Valdrin",
+                "node_type": "capital",
+                "emoji": "🏰",
+                "metadata": {"reforco": 200}
+            }
+        )
+    ]
+    test_engine.apply_actions(cid, actions, turn_number=2)
+
+    details = test_engine.get_campaign_state_details(cid)
+    nodes = details["map_nodes"]
+    allies = details["allies"]
+
+    assert not any(a["nome"] == "Valdrin (Capital)" or a["id"] == "ally_valdrin" for a in allies)
+
+    capital_nodes = [n for n in nodes if n["node_type"] == "capital" or "Capital" in n["label"]]
+    assert len(capital_nodes) == 1
+    assert capital_nodes[0]["id"] == "node_capital"
+    assert capital_nodes[0]["x"] == 0.0
+    assert capital_nodes[0]["y"] == 0.0
+    assert capital_nodes[0]["metadata"].get("reforco") == 200
+
+    assert not any(n["id"] == "capital_valdrin" for n in nodes)
+    assert not any(n["node_type"] == "reino_vizinho" and "Valdrin" in n["label"] for n in nodes)
+
+def test_cleanup_existing_duplicate_capital_nodes(test_engine):
+    turn = test_engine.create_campaign(
+        campaign_name="Reino Limpo",
+        ruler_name="Arthur Pendragon",
+        kingdom_name="Valdrin",
+        race="Centauro"
+    )
+    cid = test_engine.list_campaigns()[0]["id"]
+
+    test_engine.repo.upsert_map_node(
+        node_id="spurious_capital_valdrin",
+        campaign_id=cid,
+        label="Valdrin (Capital)",
+        node_type="reino_vizinho",
+        emoji="👑",
+        x=11.6,
+        y=-159.6,
+        status="ativo",
+        metadata={"tropas": 1000}
+    )
+
+    nodes_before = test_engine.repo.get_map_nodes(cid)
+    assert any(n["id"] == "spurious_capital_valdrin" for n in nodes_before)
+
+    details = test_engine.get_campaign_state_details(cid)
+    nodes_after = details["map_nodes"]
+    assert not any(n["id"] == "spurious_capital_valdrin" for n in nodes_after)
+    assert len([n for n in nodes_after if "Valdrin" in n["label"]]) == 1
+
