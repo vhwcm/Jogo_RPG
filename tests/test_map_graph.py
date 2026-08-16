@@ -1,3 +1,4 @@
+import uuid
 import pytest
 from engine.domain.models import MapNode, MapEdge, GameAction, KingdomStatus, TurnResponse
 from engine.domain.state_manager import GameEngine
