@@ -48,13 +48,8 @@ def test_engine_initialization():
         assert turn2.aventura is not None
         print("  [OK] Execução de turno e armazenamento de memórias episódicas (RAG) bem-sucedidos.")
 
-def test_cli_import():
-    print("\n3. Verificando importação e integridade do módulo CLI Terminal...")
-    import cli.main
-    print("  [OK] Módulo CLI importado sem erros.")
-
 def test_server_dto_import():
-    print("\n4. Verificando DTOs e esquemas do Servidor REST...")
+    print("\n3. Verificando DTOs e esquemas do Servidor REST...")
     import server.dto
     print("  [OK] DTOs do servidor importados com sucesso.")
 
@@ -64,7 +59,6 @@ def main():
     print("=========================================================\n")
     test_syntax_compilation()
     test_engine_initialization()
-    test_cli_import()
     test_server_dto_import()
     print("\n✅ TODOS OS TESTES DE COMPILAÇÃO E INICIALIZAÇÃO PASSARAM COM SUCESSO!")
 

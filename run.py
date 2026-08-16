@@ -1,22 +1,16 @@
 #!/usr/bin/env python3
-"""
-Main Entry Point Launcher for AI RPG Game.
-Usage:
-  python run.py [web|cli|test|check]
-"""
-
 import sys
 import os
 import site
 import subprocess
 
-# Ensure user site-packages (e.g. ~/.local/lib/python3.12/site-packages) are in sys.path
 user_site = site.getusersitepackages()
 if user_site and user_site not in sys.path:
     sys.path.insert(0, user_site)
 
-# Auto-activate venv if present in workspace and valid
-VENV_PYTHON = os.path.join(os.path.dirname(__file__), "venv", "bin", "python")
+VENV_PYTHON = os.path.join(os.path.dirname(__file__), ".venv", "bin", "python")
+if not os.path.exists(VENV_PYTHON):
+    VENV_PYTHON = os.path.join(os.path.dirname(__file__), "venv", "bin", "python")
 if os.path.exists(VENV_PYTHON) and os.path.isfile(VENV_PYTHON) and sys.executable != VENV_PYTHON:
     os.execv(VENV_PYTHON, [VENV_PYTHON] + sys.argv)
 
@@ -52,10 +46,6 @@ def main():
         print(f"Iniciando Servidor Web do RPG em http://{config.WEB_HOST}:{config.WEB_PORT} ...")
         print(f"Acesse no navegador: http://localhost:{config.WEB_PORT} ou http://127.0.0.1:{config.WEB_PORT}\n")
         uvicorn.run("server.app:app", host=config.WEB_HOST, port=config.WEB_PORT, reload=True)
-    elif mode == "cli":
-        print("Iniciando RPG no Terminal...")
-        from cli.main import main as cli_main
-        cli_main()
     elif mode == "test":
         print("Executando Bateria de Testes...")
         res = subprocess.run([sys.executable, "-m", "pytest", "-v"])
@@ -66,7 +56,7 @@ def main():
         from check_api import main as check_main
         check_main()
     else:
-        print("Modo desconhecido. Use: python run.py [web|cli|test|check]")
+        print("Modo desconhecido. Use: python run.py [web|test|check]")
 
 if __name__ == "__main__":
     main()
