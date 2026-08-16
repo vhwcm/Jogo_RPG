@@ -142,9 +142,10 @@ class GameEngine:
         campaign_name: str,
         ruler_name: str,
         kingdom_name: str,
-        race: str
+        race: str,
+        campaign_id: Optional[str] = None
     ) -> TurnResponse:
-        campaign_id = str(uuid.uuid4())[:8]
+        campaign_id = campaign_id or str(uuid.uuid4())[:8]
         self.repo.create_campaign(campaign_id, campaign_name)
         self.short_term_memories[campaign_id] = []
 
