@@ -17,3 +17,10 @@
 7. **Testing**:
    - Utilize `pytest` como test runner.
    - Nunca adicione testes sem necessidade, mas garanta que qualquer nova feature possua testes unitários correspondentes sem mocks desnecessários.
+8. **Logging Estruturado & Observabilidade**:
+   - Utilize o módulo padrão `logging` com formatação estruturada ou campos contextuais (`campaign_id`, `turn`, `action`, etc.).
+   - Respeite os níveis de log (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).
+   - NUNCA exponha chaves de API, senhas, tokens ou dados sensíveis em logs.
+9. **Troubleshooting Baseado em Evidências**:
+   - O agente deve analisar logs de execução antes de formular hipóteses sobre falhas de runtime.
+

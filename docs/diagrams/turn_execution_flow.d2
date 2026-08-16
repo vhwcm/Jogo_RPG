@@ -1,0 +1,40 @@
+# AI RPG Game - Turn Execution Flow Diagram
+
+direction: right
+
+player: Player / Web Client
+server_api: FastAPI (/api/campaigns/{id}/turn)
+engine: GameEngine
+context_mgr: ContextBuilder
+vector_db: VectorStore
+llm: LLMProvider (via LLMFactory)
+state_calc: StateManager
+repo: SQLite Repository
+logger: Structured Logger
+
+player -> server_api: POST Action (Option / Free Text)
+server_api -> logger: Log Turn Started (campaign_id, turn_number)
+server_api -> engine: execute_turn(campaign_id, action)
+
+engine -> context_mgr: build_context(campaign_id)
+context_mgr -> vector_db: query_relevant_memories(action)
+vector_db -> context_mgr: Return top-k episodic memories
+context_mgr -> repo: fetch_recent_turns(limit=5)
+repo -> context_mgr: Return recent history
+context_mgr -> engine: Formatted Prompt & Schema
+
+engine -> logger: Log LLM Request (provider, prompt_tokens)
+engine -> llm: generate_response(prompt, json_schema)
+
+llm -> engine: JSON Output (Narrative, Choices, Impacts)
+engine -> logger: Log LLM Response (latency_ms, status=OK)
+
+engine -> state_calc: apply_impacts(current_state, impacts)
+state_calc -> engine: Updated KingdomStatus
+
+engine -> repo: save_turn_and_state(turn_data, kingdom_status)
+engine -> vector_db: index_turn_narrative(narrative, importance)
+
+engine -> logger: Log Turn Completed (turn_number, duration_ms)
+engine -> server_api: TurnResult DTO
+server_api -> player: 200 OK (Render UI / HUD / Choices)

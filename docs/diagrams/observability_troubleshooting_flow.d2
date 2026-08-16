@@ -1,0 +1,37 @@
+# AI RPG Game - Observability and Troubleshooting Workflow
+
+direction: down
+
+runtime_event: Runtime Execution Event {
+  turn_event: Turn Processing
+  db_event: SQLite Transaction
+  llm_event: LLM Inference / Fallback
+}
+
+structured_logger: Structured Logger {
+  levels: Log Levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  context: Context Metadata (campaign_id, turn, action, duration_ms)
+  security_filter: Zero-Secrets Filter (Strips API Keys, Tokens)
+}
+
+log_sink: Persistent Log Storage / Console Stream
+
+agent_dev: AI Agent / Developer Troubleshooting {
+  inspect_logs: 1. Inspecionar Logs por campaign_id / turn
+  extract_evidence: 2. Extrair Evidência Concreta (Traceback / Status)
+  consult_guides: 3. Consultar docs/guides/observability_and_troubleshooting.md
+  apply_fix: 4. Aplicar Correção via TDD (pytest)
+  update_knowledge: 5. Documentar Procedimento Recorrente
+}
+
+runtime_event.turn_event -> structured_logger: Emits execution logs
+runtime_event.db_event -> structured_logger: Emits SQL query metrics & errors
+runtime_event.llm_event -> structured_logger: Emits latency, tokens & fallback events
+
+structured_logger -> log_sink: Sanitized Structured JSON / Formatted Text
+
+agent_dev.inspect_logs -> log_sink: Queries real execution history
+agent_dev.inspect_logs -> agent_dev.extract_evidence: Identifies root cause
+agent_dev.extract_evidence -> agent_dev.consult_guides: Finds known playbook
+agent_dev.consult_guides -> agent_dev.apply_fix: Validates with pytest
+agent_dev.apply_fix -> agent_dev.update_knowledge: Persists new resolution guide

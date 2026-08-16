@@ -27,6 +27,12 @@ Bem-vindo à base de conhecimento persistente do **AI RPG Game**, estruturada se
 - [**ADR-003: Provedores Plugáveis & Cadeia de Fallback**](decisions/ADR-003-pluggable-llm-providers.md)
 - [**ADR-004: Interface Web Glassmorphic & API FastAPI**](decisions/ADR-004-fastapi-and-glassmorphism-web-ui.md)
 - [**ADR-005: Suíte Pytest & Diagnóstico de APIs**](decisions/ADR-005-pytest-suite-and-api-diagnostics.md)
+- [**ADR-006: Observabilidade, Logs Estruturados & Padrão Visual D2**](decisions/ADR-006-observability-logs-and-d2-visual-documentation.md)
+
+### 📊 Diagramas D2 (`docs/diagrams/`)
+- [**Camadas da Arquitetura Limpa**](diagrams/architecture_layers.d2) — Visão de componentes, isolamento de camadas e conexões.
+- [**Ciclo de Execução de Turnos**](diagrams/turn_execution_flow.d2) — Fluxo ponta a ponta de requisição, RAG, inferência e persistência.
+- [**Fluxo de Observabilidade & Troubleshooting**](diagrams/observability_troubleshooting_flow.d2) — Instrumentação de logs e rotina de resolução orientada a evidências.
 
 ### ⚙️ Subsistemas (`docs/systems/`)
 - [**Ciclo de Execução de Turnos**](systems/turn_execution.md) — Fluxo ponta a ponta da entrada do jogador à resposta estruturada.
@@ -38,3 +44,6 @@ Bem-vindo à base de conhecimento persistente do **AI RPG Game**, estruturada se
 - [**Setup & Execução**](guides/setup_and_run.md) — Guia prático de instalação, configuração e inicialização.
 - [**Adicionando Novos Provedores de IA**](guides/adding_llm_provider.md) — Passo a passo para estender a camada de LLMs.
 - [**Guia de Testes & Qualidade**](guides/testing_guide.md) — Padrões e execução da suíte de testes com Pytest.
+- [**Observabilidade, Logs & Troubleshooting**](guides/observability_and_troubleshooting.md) — Padrões de logging estruturado e catálogo de procedimentos.
+- [**Guia de Padrões para Diagramas D2**](guides/d2_diagrams_guide.md) — Convenções para documentação visual com D2.
+

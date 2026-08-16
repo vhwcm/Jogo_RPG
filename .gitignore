@@ -8,6 +8,8 @@ venv/
 .venv/
 .env
 data/*.db
+data/*.db-shm
+data/*.db-wal
 data/rpg_game.db
 web_backup_v1/
 .pytest_cache/

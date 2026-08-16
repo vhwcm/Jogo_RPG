@@ -23,13 +23,13 @@ Manter a documentação do projeto como reflexo fiel e atualizado do código-fon
                     │    Avaliação    │
                     └────────┬────────┘
                              │
-       ┌─────────────────────┼─────────────────────┐
-       ▼                     ▼                     ▼
-Domínio/Modelos?       Arquitetura/API?        Nova Decisão?
-       │                     │                     │
-       ▼                     ▼                     ▼
-Atualizar docs/domain/ Atualizar docs/arch/   Criar novo ADR em
-                       e docs/systems/        docs/decisions/
+        ┌────────────────────┼────────────────────┬────────────────────┐
+        ▼                    ▼                    ▼                    ▼
+Domínio/Modelos?      Arquitetura/API/D2?    Nova Decisão?      Troubleshooting?
+        │                    │                    │                    │
+        ▼                    ▼                    ▼                    ▼
+Atualizar docs/domain/ Atualizar docs/arch/,  Criar novo ADR em  Atualizar docs/guides/
+                       docs/diagrams/ e D2    docs/decisions/    observability_*.md
 ```
 
 ## Checklist de Atualização por Área:
@@ -38,18 +38,23 @@ Atualizar docs/domain/ Atualizar docs/arch/   Criar novo ADR em
    - Foram adicionadas novas entidades ou atributos a `KingdomStatus`, `Character`, `Quest`, `Item`?
    - Atualize os arquivos correspondentes em `docs/domain/`.
 
-2. **Arquitetura & Sistemas (`docs/architecture/`, `docs/systems/`)**:
+2. **Arquitetura, Diagramas D2 & Sistemas (`docs/architecture/`, `docs/diagrams/`, `docs/systems/`)**:
    - Foram criados novos endpoints REST em `server/app.py`?
-   - O fluxo de execução de turnos ou sumarização mudou?
+   - O fluxo de execução de turnos, sumarização ou tratamento de erro mudou?
+   - Verifique e atualize os **diagramas D2** correspondentes para refletir com exatidão os componentes e fluxos atuais.
    - Atualize `docs/architecture/backend.md`, `docs/systems/turn_execution.md`, etc.
 
 3. **Banco de Dados (`docs/architecture/database.md`)**:
    - Houve inclusão de tabelas, índices ou colunas em `engine/db/`?
-   - Atualize o diagrama e descrição de schema.
+   - Atualize o diagrama D2/ERD e a descrição de schema.
 
 4. **Decisões Arquiteturais (`docs/decisions/`)**:
    - Uma decisão estrutural foi alterada ou um novo padrão foi introduzido?
-   - Crie um novo registro sequencial: `ADR-00X-<nome-da-decisao>.md`.
+   - Crie um novo registro sequencial: `ADR-00X-<nome-da-decisao>.md` acompanhado de diagrama D2 se aplicável.
 
-5. **Arquivamento de Spec**:
+5. **Observabilidade & Procedimentos de Troubleshooting (`docs/guides/`)**:
+   - Foi identificado um procedimento recorrente de investigação ou diagnóstico?
+   - Documente a rotina passo a passo em `docs/guides/observability_and_troubleshooting.md`.
+
+6. **Arquivamento de Spec**:
    - Caso a tarefa pertença a uma spec ativa, mova o diretório de `specs/active/<feature-name>` para `specs/completed/<feature-name>`.

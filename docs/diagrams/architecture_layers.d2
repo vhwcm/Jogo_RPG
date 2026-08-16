@@ -1,0 +1,73 @@
+# AI RPG Game - Clean Layered Architecture Diagram
+
+direction: down
+
+presentation: Presentation Layer {
+  web_spa: Web SPA (Vanilla JS / CSS / Glassmorphism)
+  cli_app: Rich CLI Interface
+}
+
+api_layer: Interface & API Layer (FastAPI) {
+  routes: server/app.py (HTTP REST)
+  dtos: server/dto.py (Pydantic DTOs)
+}
+
+domain_layer: Domain & Orchestration Layer {
+  game_engine: GameEngine (Core Rules & Turn Loop)
+  state_manager: StateManager (KingdomStatus & Calculations)
+  domain_models: Domain Models (Dataclasses)
+}
+
+memory_layer: Memory & Context RAG Layer {
+  context_builder: ContextBuilder (Dynamic Prompt Assembly)
+  importance_scorer: Importance Scorer (Memory Weighting)
+  summarizer: Hierarchical Summarizer (Token Budget)
+}
+
+persistence_layer: Persistence & Storage Layer {
+  repository: SQLite Repository (Foreign Keys ON, WAL Mode)
+  vector_store: VectorStore (Semantic Search & Embeddings)
+  sqlite_db: SQLite Database (campaigns, turns, events)
+}
+
+external_providers: External AI Providers Layer {
+  llm_factory: LLMFactory (Dynamic Resolution & Fallback)
+  gemini: Google Gemini Provider
+  groq: Groq Provider
+  openrouter: OpenRouter Provider
+  ollama: Ollama Local Provider
+}
+
+# Cross-cutting concerns
+observability: Cross-Cutting Observability {
+  structured_logging: Structured Logging (Context, Timings, Errors)
+  troubleshooting: Evidence-Based Troubleshooting
+}
+
+# Connections
+presentation.web_spa -> api_layer.routes: HTTP REST (JSON DTOs)
+presentation.cli_app -> api_layer.routes: HTTP REST / Direct API
+
+api_layer.routes -> domain_layer.game_engine: Delegates execution
+api_layer.routes -> api_layer.dtos: Validates Request/Response
+
+domain_layer.game_engine -> domain_layer.state_manager: Calculates Kingdom Changes
+domain_layer.game_engine -> memory_layer.context_builder: Builds Prompt Context
+domain_layer.game_engine -> external_providers.llm_factory: Requests LLM Decision
+
+memory_layer.context_builder -> persistence_layer.vector_store: Queries Semantic Memories
+memory_layer.context_builder -> persistence_layer.repository: Fetches Recent Turns
+
+external_providers.llm_factory -> external_providers.gemini: 1st Priority
+external_providers.llm_factory -> external_providers.groq: Fallback on Timeout/Error
+external_providers.llm_factory -> external_providers.openrouter: Fallback
+external_providers.llm_factory -> external_providers.ollama: Local Fallback
+
+domain_layer.game_engine -> persistence_layer.repository: Persists Turns & Events
+persistence_layer.repository -> persistence_layer.sqlite_db: SQL Transactions (ACID)
+persistence_layer.vector_store -> persistence_layer.sqlite_db: Vector/Text Tables
+
+# Observability wiring
+domain_layer.game_engine -> observability.structured_logging: Emits Contextual Logs
+api_layer.routes -> observability.structured_logging: Emits Request Latency & Status
+external_providers.llm_factory -> observability.structured_logging: Emits Fallback Warnings & Metrics

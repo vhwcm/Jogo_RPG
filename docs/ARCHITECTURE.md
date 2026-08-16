@@ -47,3 +47,17 @@ O **AI RPG Game** foi construído seguindo princípios de **Clean Architecture**
 - `characters`: Personagens e NPCs (`id`, `name`, `role`, `location`, `is_alive`, `relationship_with_player`, `knowledge_json`).
 - `quests`: Missões do reino (`id`, `title`, `description`, `status`, `objective`).
 - `memories`: Vetores e eventos RAG (`id`, `turn_number`, `content`, `importance`, `embedding_json`, `characters_json`).
+
+---
+
+## 📊 Preocupações Transversais & Padrões Visuais
+
+### 1. Observabilidade e Logs Estruturados
+Todas as camadas do sistema são instrumentadas para emitir logs estruturados com dados contextuais (`campaign_id`, `turn_number`, `action_type`, `provider`, `duration_ms`), permitindo rastreabilidade completa, monitoramento de saúde de LLMs e diagnóstico de runtime sem suposições. Chaves de API e segredos são estritamente filtrados.
+
+### 2. Documentação Visual Declarativa com D2
+Os modelos conceituais, topologia de componentes e fluxos dinâmicos do sistema são modelados formalmente em arquivos `.d2` versionados em `docs/diagrams/`:
+- [`docs/diagrams/architecture_layers.d2`](diagrams/architecture_layers.d2): Limites e interfaces entre camadas.
+- [`docs/diagrams/turn_execution_flow.d2`](diagrams/turn_execution_flow.d2): Sequência do ciclo de vida de execução de turno.
+- [`docs/diagrams/observability_troubleshooting_flow.d2`](diagrams/observability_troubleshooting_flow.d2): Fluxo de diagnóstico orientado a logs.
+

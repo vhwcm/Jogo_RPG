@@ -20,17 +20,20 @@ Executar as tarefas planejadas de forma rigorosa, atômica e disciplinada, respe
    - Inspecione `specs/active/<feature-name>/requirements.md`, `design.md` e `tasks.md`.
 
 2. **Execução Sequencial por Camadas (Bottom-Up / TDD)**:
-   - **Banco & Persistência**: Alterar schema/tabelas em `engine/db/schema.py` e métodos em `repository.py`.
-   - **Domínio**: Criar/alterar dataclasses em `engine/domain/models.py` e lógica na `GameEngine`.
-   - **Memória & Providers**: Ajustar contexto, importância ou provedores se necessário.
-   - **API / DTOs**: Criar DTOs Pydantic em `server/dto.py` e endpoints em `server/app.py`.
+   - **Banco & Persistência**: Alterar schema/tabelas em `engine/db/schema.py` e métodos em `repository.py`, adicionando logs de queries/erros onde relevante.
+   - **Domínio**: Criar/alterar dataclasses em `engine/domain/models.py` e lógica na `GameEngine`, com logs estruturados de transição de estado e tomadas de decisão.
+   - **Memória & Providers**: Ajustar contexto, importância ou provedores se necessário, com logs de latência/tokens/fallback (sem segredos).
+   - **API / DTOs**: Criar DTOs Pydantic em `server/dto.py` e endpoints em `server/app.py` com logs de requisição/resposta e exceções.
    - **Apresentação**: Implementar componentes JS/CSS em `web/` se a feature envolver UI.
+   - **Documentação Visual (D2)**: Criar ou atualizar os diagramas D2 desenhados no `design.md` e armazená-los em `docs/diagrams/` ou referenciá-los nas docs.
 
 3. **Checklist Tracking**:
-   - A cada tarefa concluída, marque o checkbox correspondente em `specs/active/<feature-name>/tasks.md` (`- [x]`).
+   - A cada tarefa concluída (incluindo código, testes, logs e diagramas D2), marque o checkbox correspondente em `specs/active/<feature-name>/tasks.md` (`- [x]`).
 
-4. **Sem Comentários**:
+4. **Sem Comentários e com Logs Estruturados**:
    - Mantenha o código estritamente sem comentários inline ou blocos de comentários, seguindo as diretrizes do projeto.
+   - Garanta logs estruturados em níveis adequados (`DEBUG`, `INFO`, `WARNING`, `ERROR`), nunca registrando dados sensíveis ou chaves de API.
 
 5. **Execução de Testes**:
    - Execute a suíte de testes com `pytest` para validar o correto funcionamento e assegurar que não haja regressões.
+

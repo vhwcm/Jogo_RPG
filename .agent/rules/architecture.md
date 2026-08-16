@@ -23,3 +23,11 @@ O sistema é estritamente desacoplado nas seguintes camadas:
 - **Desacoplamento de LLM**: A `GameEngine` e o `ContextBuilder` interagem com o LLM estritamente através da interface `BaseLLMProvider`. O acesso a instâncias de provedores é sempre orquestrado via `LLMFactory.get_provider()`.
 - **Integridade Relacional**: O SQLite3 opera sempre com `PRAGMA foreign_keys = ON` e journal mode `WAL`. `ON DELETE CASCADE` deve ser garantido para todas as tabelas filhas de `campaigns`.
 - **Configuração Centralizada**: `config.py` é o único ponto de leitura de variáveis de ambiente. Nenhum outro arquivo deve importar `dotenv` ou ler `os.environ` diretamente.
+
+## 3. Observabilidade Transversal
+- **Logs Estruturados por Camada**: Todas as camadas devem emitir logs estruturados com contexto relevante (`campaign_id`, `turn`, `action`, `duration_ms`), facilitando troubleshooting e auditoria de runtime pelo agente.
+- **Isolamento de Segredos**: Nunca registrar chaves de API, credenciais ou dados sigilosos nos logs.
+
+## 4. Modelagem Visual Arquitetural (D2)
+- Toda decisão ou fronteira arquitetural relevante deve ser acompanhada de seu respectivo diagrama D2 em `docs/diagrams/` ou referenciado nos documentos de `docs/architecture/`.
+
