@@ -4,14 +4,72 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentRace = "Humano";
 
     const modalNewGame = document.getElementById('modal-new-game');
-    const modalMemories = document.getElementById('modal-memories');
     const modalCampaigns = document.getElementById('modal-campaigns');
+    const modalInventory = document.getElementById('modal-inventory');
+    const modalQuests = document.getElementById('modal-quests');
+    const modalAllies = document.getElementById('modal-allies');
+
     const actionForm = document.getElementById('action-form');
     const actionInput = document.getElementById('action-input');
     const btnSubmit = document.getElementById('btn-submit');
     const inputImport = document.getElementById('input-import-campaign');
 
-    // Fetch existing campaigns & health status
+    if (window.TacticalMap) {
+        window.TacticalMap.init('tactical-map-canvas', 'map-canvas-wrapper', 'map-tooltip');
+
+        const btnZoomIn = document.getElementById('btn-map-zoom-in');
+        if (btnZoomIn) btnZoomIn.onclick = () => window.TacticalMap.zoomIn();
+
+        const btnZoomOut = document.getElementById('btn-map-zoom-out');
+        if (btnZoomOut) btnZoomOut.onclick = () => window.TacticalMap.zoomOut();
+
+        const btnRecenter = document.getElementById('btn-map-recenter');
+        if (btnRecenter) btnRecenter.onclick = () => window.TacticalMap.recenter();
+
+        const btnResetCamera = document.getElementById('btn-map-reset-camera');
+        if (btnResetCamera) btnResetCamera.onclick = () => window.TacticalMap.resetCamera();
+
+        const layerFilter = document.getElementById('map-layer-filter');
+        if (layerFilter) {
+            layerFilter.onchange = () => window.TacticalMap.setLayerFilter(layerFilter.value);
+        }
+    }
+
+    window.addEventListener('node-inspect', (e) => {
+        UI.openInspector(e.detail);
+    });
+
+    window.addEventListener('node-inspect-close', () => {
+        UI.closeInspector();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (UI.inspectorOpen) {
+                UI.closeInspector();
+                return;
+            }
+        }
+    });
+
+    const inspectorDrawer = document.getElementById('inspector-drawer');
+    const panelTactical = document.getElementById('panel-tactical');
+    if (panelTactical && inspectorDrawer) {
+        panelTactical.addEventListener('click', (e) => {
+            if (UI.inspectorOpen && !inspectorDrawer.contains(e.target)) {
+                const node = window.TacticalMap ? window.TacticalMap.findNodeAt(e.clientX, e.clientY) : null;
+                if (!node) {
+                    UI.closeInspector();
+                }
+            }
+        });
+    }
+
+    const btnCloseInspector = document.getElementById('btn-close-inspector');
+    if (btnCloseInspector) {
+        btnCloseInspector.onclick = () => UI.closeInspector();
+    }
+
     checkHealth();
     checkExistingCampaigns();
 
@@ -30,12 +88,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function checkExistingCampaigns() {
         try {
+            const savedCampaignId = localStorage.getItem('rpg_active_campaign_id');
             const resp = await fetch('/api/campaigns');
             const campaigns = await resp.json();
             if (campaigns && campaigns.length > 0) {
-                currentCampaignId = campaigns[0].id;
+                const targetCampaign = savedCampaignId ? campaigns.find(c => c.id === savedCampaignId) : null;
+                const selectedId = targetCampaign ? targetCampaign.id : campaigns[0].id;
+                currentCampaignId = selectedId;
+                localStorage.setItem('rpg_active_campaign_id', selectedId);
                 loadCampaignInfo(currentCampaignId);
             } else {
+                localStorage.removeItem('rpg_active_campaign_id');
                 modalNewGame.classList.remove('hidden');
             }
         } catch (e) {
@@ -44,9 +107,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function refreshStateDetails(campaignId) {
+        if (!campaignId) return;
+        try {
+            const resp = await fetch(`/api/campaign/${campaignId}/state-details`);
+            if (resp.ok) {
+                const details = await resp.json();
+                UI.renderInventory(details.items || []);
+                UI.renderTasks(details.tasks || []);
+                UI.renderAllies(details.allies || []);
+                if (window.TacticalMap && details.map_nodes) {
+                    window.TacticalMap.setData(details.map_nodes, details.map_edges || []);
+                }
+            }
+        } catch (err) {
+            console.warn('Error fetching state details:', err);
+        }
+    }
+
     async function loadCampaignInfo(id) {
         try {
             currentCampaignId = id;
+            localStorage.setItem('rpg_active_campaign_id', id);
             const infoResp = await fetch(`/api/campaigns/${id}`);
             const info = await infoResp.json();
             if (info.race) {
@@ -75,7 +157,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (raw.clima && window.rpgAudio) {
                         window.rpgAudio.updateThemeFromModel(raw.clima);
                     }
-                    // For the last turn, render quick options
                     if (index === history.length - 1 && raw.opcoes) {
                         UI.renderQuickOptions(raw.opcoes, raw.aventura, (selected) => {
                             actionInput.value = selected;
@@ -86,6 +167,8 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 UI.appendNarrativeBlock("Iniciando crônica do reino...", "CONSELHO REAL");
             }
+
+            refreshStateDetails(currentCampaignId);
         } catch (e) {
             console.error('Failed to load campaign:', e);
         }
@@ -98,6 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
             UI.renderCampaignsList(campaigns, currentCampaignId, {
                 onSelect: (id) => {
                     modalCampaigns.classList.add('hidden');
+                    localStorage.setItem('rpg_active_campaign_id', id);
                     loadCampaignInfo(id);
                 },
                 onExport: async (id) => {
@@ -123,8 +207,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const checkResp = await fetch('/api/campaigns');
                                 const checkCamps = await checkResp.json();
                                 if (checkCamps && checkCamps.length > 0) {
+                                    localStorage.setItem('rpg_active_campaign_id', checkCamps[0].id);
                                     loadCampaignInfo(checkCamps[0].id);
                                 } else {
+                                    localStorage.removeItem('rpg_active_campaign_id');
                                     UI.clearNarrativeFeed();
                                     modalCampaigns.classList.add('hidden');
                                     modalNewGame.classList.remove('hidden');
@@ -142,9 +228,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Modal Navigation Listeners
     document.getElementById('btn-new-game').onclick = () => modalNewGame.classList.remove('hidden');
     document.getElementById('btn-close-modal').onclick = () => modalNewGame.classList.add('hidden');
+
+    const btnInventoryDrawer = document.getElementById('btn-inventory-drawer');
+    if (btnInventoryDrawer) {
+        btnInventoryDrawer.onclick = () => {
+            modalInventory.classList.remove('hidden');
+            refreshStateDetails(currentCampaignId);
+        };
+    }
+    const btnCloseInventory = document.getElementById('btn-close-inventory');
+    if (btnCloseInventory) {
+        btnCloseInventory.onclick = () => modalInventory.classList.add('hidden');
+    }
+
+    const btnQuestsDrawer = document.getElementById('btn-quests-drawer');
+    if (btnQuestsDrawer) {
+        btnQuestsDrawer.onclick = () => {
+            modalQuests.classList.remove('hidden');
+            refreshStateDetails(currentCampaignId);
+        };
+    }
+    const btnCloseQuests = document.getElementById('btn-close-quests');
+    if (btnCloseQuests) {
+        btnCloseQuests.onclick = () => modalQuests.classList.add('hidden');
+    }
+
+    const btnAlliesDrawer = document.getElementById('btn-allies-drawer');
+    if (btnAlliesDrawer) {
+        btnAlliesDrawer.onclick = () => {
+            modalAllies.classList.remove('hidden');
+            refreshStateDetails(currentCampaignId);
+        };
+    }
+    const btnCloseAllies = document.getElementById('btn-close-allies');
+    if (btnCloseAllies) {
+        btnCloseAllies.onclick = () => modalAllies.classList.add('hidden');
+    }
 
     const btnCampaignsDrawer = document.getElementById('btn-campaigns-drawer');
     if (btnCampaignsDrawer) {
@@ -211,11 +332,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(payload)
             });
             const data = await resp.json();
-            
-            // Get newly created campaign ID
+
             const listResp = await fetch('/api/campaigns');
             const camps = await listResp.json();
             currentCampaignId = camps[0].id;
+            localStorage.setItem('rpg_active_campaign_id', currentCampaignId);
             currentTurnNum = 1;
 
             UI.updateStatusHUD(data.status_reino, 1, currentRace);
@@ -227,13 +348,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 actionInput.value = selected;
                 actionForm.dispatchEvent(new Event('submit'));
             });
+
+            if (data.actions) {
+                UI.handleTurnActions(data.actions);
+            }
+            refreshStateDetails(currentCampaignId);
         } catch (err) {
             console.error(err);
             UI.appendNarrativeBlock("Erro ao iniciar novo reino. Verifique se o servidor está rodando.", "ERRO");
         }
     };
 
-    // Pre-flight action impact estimation listener
     let estimateDebounceTimer = null;
     if (actionInput) {
         actionInput.addEventListener('input', (e) => {
@@ -261,18 +386,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Execute Turn Form Submission
     actionForm.onsubmit = async (e) => {
         e.preventDefault();
         const text = actionInput.value.trim();
         if (!text || !currentCampaignId) return;
 
+        if (estimateDebounceTimer) clearTimeout(estimateDebounceTimer);
         UI.showPreflightEstimate(null);
         actionInput.value = '';
         btnSubmit.disabled = true;
         btnSubmit.innerHTML = '<span>Consultando...</span>';
 
         UI.appendNarrativeBlock(text, "ORDEM DO IMPERADOR");
+        UI.showLoadingIndicator();
 
         await executePlayerAction(text);
 
@@ -293,38 +419,29 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await resp.json();
             currentTurnNum += 1;
-            
+
             UI.updateStatusHUD(data.status_reino, currentTurnNum, currentRace);
             if (data.clima) {
                 window.rpgAudio.updateThemeFromModel(data.clima);
             }
-            UI.appendNarrativeBlock(data.aventura, "CONSELHO REAL");
+            UI.appendNarrativeBlock(data.aventura, "CONSELHO REAL", true);
             UI.renderQuickOptions(data.opcoes, data.aventura, (selected) => {
+                if (estimateDebounceTimer) clearTimeout(estimateDebounceTimer);
                 actionInput.value = selected;
                 actionForm.dispatchEvent(new Event('submit'));
             });
+
+            if (data.actions) {
+                UI.handleTurnActions(data.actions);
+            }
+            refreshStateDetails(currentCampaignId);
         } catch (err) {
             console.error(err);
+            UI.hideLoadingIndicator();
             UI.appendNarrativeBlock("Falha ao comunicar com os conselheiros do reino.", "ERRO");
         }
     }
 
-    // Memory Drawer Listeners
-    document.getElementById('btn-memory-drawer').onclick = async () => {
-        modalMemories.classList.remove('hidden');
-        if (currentCampaignId) {
-            try {
-                const resp = await fetch(`/api/memories/${currentCampaignId}`);
-                const memories = await resp.json();
-                UI.renderMemories(memories);
-            } catch (e) {
-                console.error(e);
-            }
-        }
-    };
-    document.getElementById('btn-close-memories').onclick = () => modalMemories.classList.add('hidden');
-
-    // Audio Controls Listeners
     const btnAudioToggle = document.getElementById('btn-audio-toggle');
     if (btnAudioToggle) {
         btnAudioToggle.onclick = () => window.rpgAudio.togglePlay();
